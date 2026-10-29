@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: evotingdpt
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: evotingdpt-db
+          property: connectionString
+
+databases:
+  - name: evotingdpt-db
+    plan: free
+    databaseName: evotingdpt
+    user: evotingdpt

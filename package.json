@@ -1,0 +1,12 @@
+{
+  "name": "dpt-evoting-stpn-2026-2027",
+  "version": "1.0.0",
+  "private": true,
+  "description": "E-Voting Ketua dan Wakil Ketua DPT Politeknik Agraria STPN 2026-2027",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

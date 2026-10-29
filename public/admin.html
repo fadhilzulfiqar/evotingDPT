@@ -1,25 +1,116 @@
-<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin E-Voting DPT</title><link rel="stylesheet" href="/styles.css"></head><body>
-<div id="adminLogin" class="login-admin"><div class="card"><div class="logo">DPT</div><h2>Login Admin</h2><p class="mini">Dashboard E-Voting DPT Politeknik Agraria STPN</p><div id="adminLoginMsg"></div><div class="form-group"><label class="label">Username Admin</label><input id="aUser" class="input" value="admin_dpt"></div><div class="form-group"><label class="label">Password</label><input id="aPass" type="password" class="input"></div><button class="btn btn-primary full" onclick="adminLoginFn()">MASUK DASHBOARD</button></div></div>
-<div id="adminApp" class="admin-layout hidden"><aside class="side"><div class="logo">DPT</div><h3>Admin E-Voting</h3><nav><a href="#dashboard">Dashboard</a><a href="#kandidat">Kandidat</a><a href="#pemilih">Pemilih</a><a href="#keamanan">Keamanan</a></nav><button class="btn btn-ghost full" onclick="adminLogout()">Keluar</button></aside><main class="admin-main"><div class="section-title"><div><h1 style="margin:0">Dashboard Hasil Pemilihan</h1><div class="mini" id="lastUpdate">Memuat...</div></div><button class="btn btn-primary" onclick="loadStats()">Refresh Data</button></div>
-<section id="dashboard"><div class="stats"><div class="stat"><div class="k">TOTAL PEMILIH</div><div class="v" id="sTotal">0</div></div><div class="stat"><div class="k">SUDAH MEMILIH</div><div class="v" id="sVoted">0</div></div><div class="stat"><div class="k">BELUM MEMILIH</div><div class="v" id="sRemain">0</div></div><div class="stat"><div class="k">PARTISIPASI</div><div class="v" id="sPart">0%</div></div></div><div class="panel" style="margin-top:20px"><h2>Perolehan Suara</h2><div id="results"></div></div></section>
-<section id="kandidat" class="panel"><div class="section-title"><h2>Pengaturan Pemilihan & Kandidat</h2><span class="badge">Bisa diedit</span></div><div class="split"><div><div class="form-group"><label class="label">Judul</label><input id="cfgTitle" class="input"></div><div class="form-group"><label class="label">Institusi</label><input id="cfgInstitution" class="input"></div><div class="form-group"><label class="label">Periode</label><input id="cfgPeriod" class="input"></div></div><div><div class="form-group"><label class="label">Tagline</label><input id="cfgTagline" class="input"></div><div class="form-group"><label class="label">Status Pemilihan</label><select id="cfgStatus" class="select"><option value="open">Dibuka</option><option value="closed">Ditutup</option><option value="scheduled">Belum Dimulai</option></select></div></div></div><div id="candidateEditors" class="grid"></div><button class="btn btn-gold" onclick="saveConfig()">SIMPAN PERUBAHAN</button></section>
-<section id="pemilih" class="panel"><div class="section-title"><h2>Daftar Pemilih</h2><span class="mini">Admin hanya melihat status, bukan pilihan.</span></div><div class="split"><div><h3>Tambah 1 Pemilih</h3><div class="form-group"><input id="uName" class="input" placeholder="Nama"></div><div class="form-group"><input id="uUsername" class="input" placeholder="Username / NIM"></div><div class="form-group"><input id="uPassword" class="input" placeholder="Password unik"></div><button class="btn btn-primary" onclick="addUser()">Tambah Pemilih</button></div><div><h3>Tambah Banyak Pemilih</h3><p class="mini">Format per baris: Nama | Username/NIM | Password</p><textarea id="bulkUsers" class="textarea" placeholder="Andi | 12345 | PWD001&#10;Budi | 12346 | PWD002"></textarea><button class="btn btn-primary" onclick="bulkAdd()">Import Daftar</button></div></div><div class="form-group"><input id="searchUser" class="input" placeholder="Cari nama / username..." oninput="renderUsers()"></div><div class="table-wrap"><table class="table"><thead><tr><th>No.</th><th>Nama</th><th>Username/NIM</th><th>Status</th><th>Waktu Memilih</th></tr></thead><tbody id="userRows"></tbody></table></div></section>
-<section id="keamanan" class="panel"><h2>Keamanan Admin</h2><p class="mini">Ganti password admin bawaan sebelum sistem dipakai.</p><div class="split"><input id="oldPass" type="password" class="input" placeholder="Password admin lama"><input id="newPass" type="password" class="input" placeholder="Password admin baru (min. 8 karakter)"></div><button class="btn btn-danger" style="margin-top:12px" onclick="changeAdminPassword()">Ganti Password Admin</button></section>
-</main></div>
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin EvotingDPT</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div id="adminLogin" class="login-admin">
+  <div class="card">
+    <div class="logo">DPT</div>
+    <h2>Login Admin</h2>
+    <p class="mini">Dashboard E-Voting DPT Politeknik Agraria STPN</p>
+    <div id="adminLoginMsg"></div>
+    <div class="form-group"><label class="label">Username Admin</label><input id="aUser" class="input" value="admin_dpt"></div>
+    <div class="form-group"><label class="label">Password</label><input id="aPass" type="password" class="input"></div>
+    <button class="btn btn-primary full" onclick="adminLoginFn()">MASUK DASHBOARD</button>
+  </div>
+</div>
+
+<div id="adminApp" class="admin-layout hidden">
+  <aside class="side">
+    <div class="logo">DPT</div><h3>Admin EvotingDPT</h3>
+    <nav><a href="#dashboard">Dashboard</a><a href="#kandidat">Kandidat</a><a href="#pemilih">Pemilih</a><a href="#keamanan">Keamanan</a></nav>
+    <button class="btn btn-ghost full" onclick="adminLogout()">Keluar</button>
+  </aside>
+  <main class="admin-main">
+    <div class="section-title">
+      <div><h1 style="margin:0">Dashboard Hasil Pemilihan</h1><div class="mini" id="lastUpdate">Memuat...</div></div>
+      <button class="btn btn-primary" onclick="loadStats()">Refresh Data</button>
+    </div>
+
+    <section id="dashboard">
+      <div class="stats">
+        <div class="stat"><div class="k">TOTAL PEMILIH</div><div class="v" id="sTotal">0</div></div>
+        <div class="stat"><div class="k">SUDAH MEMILIH</div><div class="v" id="sVoted">0</div></div>
+        <div class="stat"><div class="k">BELUM MEMILIH</div><div class="v" id="sRemain">0</div></div>
+        <div class="stat"><div class="k">PARTISIPASI</div><div class="v" id="sPart">0%</div></div>
+      </div>
+      <div class="panel" style="margin-top:20px"><h2>Perolehan Suara</h2><div id="results"></div></div>
+    </section>
+
+    <section id="kandidat" class="panel">
+      <div class="section-title"><h2>Pengaturan Pemilihan & Kandidat</h2><span class="badge">Bisa diedit</span></div>
+      <div class="split">
+        <div>
+          <div class="form-group"><label class="label">Judul</label><input id="cfgTitle" class="input"></div>
+          <div class="form-group"><label class="label">Institusi</label><input id="cfgInstitution" class="input"></div>
+          <div class="form-group"><label class="label">Periode</label><input id="cfgPeriod" class="input"></div>
+        </div>
+        <div>
+          <div class="form-group"><label class="label">Tagline</label><input id="cfgTagline" class="input"></div>
+          <div class="form-group"><label class="label">Status Pemilihan</label><select id="cfgStatus" class="select"><option value="open">Dibuka</option><option value="closed">Ditutup</option><option value="scheduled">Belum Dimulai</option></select></div>
+        </div>
+      </div>
+      <div id="candidateEditors" class="grid"></div>
+      <button class="btn btn-gold" onclick="saveConfig()">SIMPAN PERUBAHAN</button>
+    </section>
+
+    <section id="pemilih" class="panel">
+      <div class="section-title">
+        <div><h2 style="margin:0">Daftar Pemilih</h2><span class="mini">Admin hanya melihat status, bukan pilihan.</span></div>
+        <button class="btn btn-danger" onclick="resetPractice()">RESET DATA LATIHAN</button>
+      </div>
+      <div class="split">
+        <div>
+          <h3>Tambah 1 Pemilih</h3>
+          <div class="form-group"><input id="uName" class="input" placeholder="Nama"></div>
+          <div class="form-group"><input id="uUsername" class="input" placeholder="Username / NIM"></div>
+          <div class="form-group"><input id="uPassword" class="input" placeholder="Password unik"></div>
+          <button class="btn btn-primary" onclick="addUser()">Tambah Pemilih</button>
+        </div>
+        <div>
+          <h3>Tambah Banyak Pemilih</h3>
+          <p class="mini">Format per baris: Nama | Username/NIM | Password</p>
+          <textarea id="bulkUsers" class="textarea" placeholder="Andi | 12345 | PWD001&#10;Budi | 12346 | PWD002"></textarea>
+          <button class="btn btn-primary" onclick="bulkAdd()">Import Daftar</button>
+        </div>
+      </div>
+      <div class="form-group"><input id="searchUser" class="input" placeholder="Cari nama / username..." oninput="renderUsers()"></div>
+      <div class="table-wrap"><table class="table"><thead><tr><th>No.</th><th>Nama</th><th>Username/NIM</th><th>Status</th><th>Waktu Memilih</th><th>Aksi</th></tr></thead><tbody id="userRows"></tbody></table></div>
+    </section>
+
+    <section id="keamanan" class="panel">
+      <h2>Keamanan Admin</h2>
+      <p class="mini">Ganti password admin bawaan sebelum sistem dipakai.</p>
+      <div class="split"><input id="oldPass" type="password" class="input" placeholder="Password admin lama"><input id="newPass" type="password" class="input" placeholder="Password admin baru (min. 8 karakter)"></div>
+      <button class="btn btn-danger" style="margin-top:12px" onclick="changeAdminPassword()">Ganti Password Admin</button>
+    </section>
+  </main>
+</div>
+
 <script>
-let data=null; const $=s=>document.querySelector(s); const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+let data=null;
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 async function api(url,opt={}){const r=await fetch(url,{headers:{'Content-Type':'application/json',...(opt.headers||{})},...opt});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Terjadi kesalahan');return j}
 async function adminLoginFn(){try{await api('/api/admin/login',{method:'POST',body:JSON.stringify({username:$('#aUser').value,password:$('#aPass').value})});$('#adminLogin').classList.add('hidden');$('#adminApp').classList.remove('hidden');loadStats()}catch(e){$('#adminLoginMsg').innerHTML='<div class="notice error">'+esc(e.message)+'</div>'}}
 async function loadStats(){try{data=await api('/api/admin/stats');$('#adminLogin').classList.add('hidden');$('#adminApp').classList.remove('hidden');$('#sTotal').textContent=data.total;$('#sVoted').textContent=data.voted;$('#sRemain').textContent=data.remaining;$('#sPart').textContent=data.participation+'%';$('#lastUpdate').textContent='Data terakhir: '+(data.updatedAt?new Date(data.updatedAt).toLocaleString('id-ID'):'belum ada suara');renderResults();fillConfig();renderUsers()}catch(e){if(e.message==='Unauthorized')return;console.error(e)}}
 function renderResults(){const totalVotes=Object.values(data.counts).reduce((a,b)=>a+b,0)||1;$('#results').innerHTML=data.config.candidates.map(c=>{const n=data.counts[c.id]||0,p=Math.round(n/totalVotes*1000)/10;return `<div style="margin:18px 0"><div class="inline" style="justify-content:space-between"><b>PASLON ${c.id} — ${esc(c.ketua)} & ${esc(c.wakil)}</b><b>${n} suara (${p}%)</b></div><div class="bar" style="margin-top:8px"><div style="width:${p}%"></div></div></div>`}).join('')}
 function fillConfig(){const c=data.config;$('#cfgTitle').value=c.title;$('#cfgInstitution').value=c.institution;$('#cfgPeriod').value=c.period;$('#cfgTagline').value=c.tagline;$('#cfgStatus').value=c.status;$('#candidateEditors').innerHTML=c.candidates.map((x,i)=>editor(x,i)).join('')}
 function editor(c,i){return `<div class="card"><span class="badge">PASLON ${c.id}</span><div class="split"><div><label class="label">Foto Ketua</label><img id="pk${i}" class="file-preview" src="${c.photoKetua||''}"><input type="file" accept="image/*" onchange="readImg(this,'pk${i}','k',${i})"></div><div><label class="label">Foto Wakil</label><img id="pw${i}" class="file-preview" src="${c.photoWakil||''}"><input type="file" accept="image/*" onchange="readImg(this,'pw${i}','w',${i})"></div></div><div class="form-group"><label class="label">Nama Ketua</label><input id="ketua${i}" class="input" value="${esc(c.ketua)}"></div><div class="form-group"><label class="label">Nama Wakil</label><input id="wakil${i}" class="input" value="${esc(c.wakil)}"></div><div class="form-group"><label class="label">Visi</label><textarea id="visi${i}" class="textarea">${esc(c.visi)}</textarea></div><div class="form-group"><label class="label">Misi</label><textarea id="misi${i}" class="textarea">${esc(c.misi)}</textarea></div><div class="form-group"><label class="label">Slogan</label><input id="slogan${i}" class="input" value="${esc(c.slogan)}"></div></div>`}
-function readImg(input,imgId,kind,i){const f=input.files[0];if(!f)return;if(f.size>2500000){alert('Foto maksimal 2,5 MB.');input.value='';return}const r=new FileReader();r.onload=()=>{$('#'+imgId).src=r.result;if(kind==='k')data.config.candidates[i].photoKetua=r.result;else data.config.candidates[i].photoWakil=r.result};r.readAsDataURL(f)}
+function readImg(input,imgId,kind,i){const f=input.files[0];if(!f)return;if(f.size>1200000){alert('Agar database online tetap ringan, foto maksimal 1,2 MB.');input.value='';return}const r=new FileReader();r.onload=()=>{$('#'+imgId).src=r.result;if(kind==='k')data.config.candidates[i].photoKetua=r.result;else data.config.candidates[i].photoWakil=r.result};r.readAsDataURL(f)}
 async function saveConfig(){const candidates=data.config.candidates.map((c,i)=>({...c,ketua:$('#ketua'+i).value,wakil:$('#wakil'+i).value,visi:$('#visi'+i).value,misi:$('#misi'+i).value,slogan:$('#slogan'+i).value}));try{await api('/api/admin/config',{method:'POST',body:JSON.stringify({title:$('#cfgTitle').value,institution:$('#cfgInstitution').value,period:$('#cfgPeriod').value,tagline:$('#cfgTagline').value,status:$('#cfgStatus').value,candidates})});alert('Pengaturan berhasil disimpan.');loadStats()}catch(e){alert(e.message)}}
-function renderUsers(){if(!data)return;const q=($('#searchUser').value||'').toLowerCase();const rows=data.users.filter(u=>(u.name+' '+u.username).toLowerCase().includes(q));$('#userRows').innerHTML=rows.map((u,i)=>`<tr><td>${i+1}</td><td>${esc(u.name)}</td><td>${esc(u.username)}</td><td><span class="badge ${u.hasVoted?'open':''}">${u.hasVoted?'SUDAH MEMILIH':'BELUM MEMILIH'}</span></td><td>${u.votedAt?new Date(u.votedAt).toLocaleString('id-ID'):'-'}</td></tr>`).join('')}
+function renderUsers(){if(!data)return;const q=($('#searchUser').value||'').toLowerCase();const rows=data.users.filter(u=>(u.name+' '+u.username).toLowerCase().includes(q));$('#userRows').innerHTML=rows.map((u,i)=>`<tr><td>${i+1}</td><td>${esc(u.name)}</td><td>${esc(u.username)}</td><td><span class="badge ${u.hasVoted?'open':''}">${u.hasVoted?'SUDAH MEMILIH':'BELUM MEMILIH'}</span></td><td>${u.votedAt?new Date(u.votedAt).toLocaleString('id-ID'):'-'}</td><td>${u.hasVoted?'<span class="mini">Terkunci</span>':`<button class="btn btn-danger" onclick="deleteUser('${u.id}')">Hapus</button>`}</td></tr>`).join('')}
 async function addUser(){try{await api('/api/admin/users/add',{method:'POST',body:JSON.stringify({name:$('#uName').value,username:$('#uUsername').value,password:$('#uPassword').value})});$('#uName').value=$('#uUsername').value=$('#uPassword').value='';await loadStats();alert('Pemilih ditambahkan.')}catch(e){alert(e.message)}}
 async function bulkAdd(){const rows=$('#bulkUsers').value.split(/\n+/).map(x=>x.split('|').map(s=>s.trim())).filter(x=>x.length>=3).map(x=>({name:x[0],username:x[1],password:x[2]}));try{const r=await api('/api/admin/users/bulk',{method:'POST',body:JSON.stringify({rows})});await loadStats();alert(`Berhasil tambah ${r.added} pemilih. Dilewati: ${r.skipped.length}`)}catch(e){alert(e.message)}}
+async function deleteUser(id){const u=data.users.find(x=>x.id===id);if(!u)return;if(!confirm(`Hapus ${u.name} (${u.username})?`))return;try{await api('/api/admin/users/delete',{method:'POST',body:JSON.stringify({id})});await loadStats();alert('Pemilih berhasil dihapus.')}catch(e){alert(e.message)}}
+async function resetPractice(){if(!confirm('Reset latihan akan membuat seluruh suara kembali 0 dan semua akun menjadi BELUM MEMILIH. Daftar pemilih tetap ada. Lanjutkan?'))return;if(!confirm('Yakin reset seluruh hasil latihan sekarang?'))return;try{await api('/api/admin/reset-practice',{method:'POST',body:'{}'});await loadStats();alert('Data latihan berhasil direset.')}catch(e){alert(e.message)}}
 async function changeAdminPassword(){try{await api('/api/admin/password',{method:'POST',body:JSON.stringify({oldPassword:$('#oldPass').value,newPassword:$('#newPass').value})});$('#oldPass').value=$('#newPass').value='';alert('Password admin berhasil diganti.')}catch(e){alert(e.message)}}
 async function adminLogout(){await api('/api/admin/logout',{method:'POST',body:'{}'});location.reload()}
 loadStats();
-</script></body></html>
+</script>
+</body>
+</html>

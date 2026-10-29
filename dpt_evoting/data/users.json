@@ -1,0 +1,26 @@
+[
+  {
+    "id": "1",
+    "name": "Pemilih Demo 1",
+    "username": "pemilih001",
+    "passwordHash": "987dc44e5a9bb16a08445e5e97dd0062:7044b379aa366f37db3a0b80d344b1fd4a45e6643236681ec141244fd129740e3f0f1d2b8a962b160ba7479fee4c102c456ba6a7aa523fce72b764fd15a01a3e",
+    "hasVoted": true,
+    "votedAt": "2026-10-29T14:29:16.233Z"
+  },
+  {
+    "id": "2",
+    "name": "Pemilih Demo 2",
+    "username": "pemilih002",
+    "passwordHash": "9aded0f3f8c2d9d2a0a7519c0a0f4e96:21b0480972e68f6736c680c0f09e8ede38147e0dceba1af048ee0040824cc7bd5596df5a8d36bc347bf56e98f55deba67082c8316ecaa5d878a0812d5000970e",
+    "hasVoted": true,
+    "votedAt": "2026-10-29T14:29:51.888Z"
+  },
+  {
+    "id": "3",
+    "name": "Pemilih Demo 3",
+    "username": "pemilih003",
+    "passwordHash": "1e690960c6c182554b8e5e8eb75d3a4b:868e4174248c32ca49a2116445b9bc03d48b9ad5f9c47e254999cf32a8d447d7e8ed6c10b4309313e761caec34c5c46b8cbdba9f817f22c67d9892a51336bdf3",
+    "hasVoted": true,
+    "votedAt": "2026-10-29T14:31:14.695Z"
+  }
+]

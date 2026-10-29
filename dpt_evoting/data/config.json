@@ -1,0 +1,29 @@
+{
+  "title": "Pemilihan Ketua & Wakil Ketua DPT",
+  "institution": "Politeknik Agraria STPN",
+  "period": "2026–2027",
+  "tagline": "SATU SUARA, SATU PILIHAN, UNTUK DPT YANG LEBIH BAIK",
+  "status": "open",
+  "candidates": [
+    {
+      "id": "01",
+      "ketua": "Nama Calon Ketua 01",
+      "wakil": "Nama Calon Wakil 01",
+      "visi": "Tuliskan visi Paslon 01 di sini.",
+      "misi": "1. Misi pertama\n2. Misi kedua\n3. Misi ketiga",
+      "slogan": "Bersama membawa DPT lebih baik.",
+      "photoKetua": "",
+      "photoWakil": ""
+    },
+    {
+      "id": "02",
+      "ketua": "Nama Calon Ketua 02",
+      "wakil": "Nama Calon Wakil 02",
+      "visi": "Tuliskan visi Paslon 02 di sini.",
+      "misi": "1. Misi pertama\n2. Misi kedua\n3. Misi ketiga",
+      "slogan": "Bergerak bersama untuk kemajuan.",
+      "photoKetua": "",
+      "photoWakil": ""
+    }
+  ]
+}

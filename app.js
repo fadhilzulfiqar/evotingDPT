@@ -366,6 +366,7 @@
     const username = document.getElementById("newVoterUsername").value.trim().toLowerCase();
     const password = document.getElementById("newVoterPassword").value;
     if (!name || !username || password.length < 8) { alert("Lengkapi nama, username, dan password minimal 8 karakter."); return; }
+    if (!/^[a-z0-9._-]{3,30}$/.test(username)) { alert("Username hanya boleh berisi huruf kecil, angka, titik, garis bawah, atau tanda hubung (3–30 karakter)."); return; }
     if (d.users.some(function (u) { return u.username.toLowerCase() === username; })) { alert("Username sudah digunakan."); return; }
     d.users.push({ name: name, username: username, passwordHash: await hash(password), hasVoted: false, isSeed: false });
     saveDB(d); logActivity("Pemilih ditambahkan", name + " (" + username + ").");
@@ -383,6 +384,7 @@
       const parts = row.split("|").map(function (x) { return x.trim(); });
       if (parts.length < 3 || !parts[0] || !parts[1] || parts[2].length < 8) continue;
       const username = parts[1].toLowerCase();
+      if (!/^[a-z0-9._-]{3,30}$/.test(username)) continue;
       if (d.users.some(function (u) { return u.username.toLowerCase() === username; })) continue;
       d.users.push({ name: parts[0], username: username, passwordHash: await hash(parts[2]), hasVoted: false, isSeed: false });
       added++;

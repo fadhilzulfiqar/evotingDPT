@@ -9,7 +9,7 @@ const DEFAULT_CONFIG = {
   institution: 'Politeknik Agraria STPN',
   period: '2026–2027',
   tagline: 'SATU SUARA, SATU PILIHAN, UNTUK DPT YANG LEBIH BAIK',
-  status: 'open',
+  status: 'scheduled',
   candidates: [
     { id: '01', ketua: 'Nama Calon Ketua 01', wakil: 'Nama Calon Wakil 01', visi: 'Tuliskan visi Paslon 01 di sini.', misi: '1. Misi pertama\n2. Misi kedua\n3. Misi ketiga', slogan: 'Bersama membawa DPT lebih baik.', photoKetua: '', photoWakil: '' },
     { id: '02', ketua: 'Nama Calon Ketua 02', wakil: 'Nama Calon Wakil 02', visi: 'Tuliskan visi Paslon 02 di sini.', misi: '1. Misi pertama\n2. Misi kedua\n3. Misi ketiga', slogan: 'Bergerak bersama untuk kemajuan.', photoKetua: '', photoWakil: '' }
@@ -122,14 +122,30 @@ async function getConfig() {
     const result = await store.setJSON('main', DEFAULT_CONFIG, { onlyIfNew: true });
     cfg = result.modified ? DEFAULT_CONFIG : await store.get('main', { type: 'json', consistency: 'strong' });
   }
-  return cfg || DEFAULT_CONFIG;
+  cfg = cfg || DEFAULT_CONFIG;
+
+  // Safety migration: never leave the sample election open for voting.
+  const sampleCandidates = Array.isArray(cfg.candidates)
+    && cfg.candidates.length === 2
+    && cfg.candidates.every((candidate, index) => {
+      const number = String(index + 1).padStart(2, '0');
+      return candidate.ketua === `Nama Calon Ketua ${number}`
+        && candidate.wakil === `Nama Calon Wakil ${number}`
+        && !candidate.photoKetua
+        && !candidate.photoWakil;
+    });
+  if (sampleCandidates && cfg.status !== 'scheduled') {
+    cfg = { ...cfg, status: 'scheduled' };
+    await store.setJSON('main', cfg);
+  }
+  return cfg;
 }
 
 async function ensureAdmin() {
   const store = stores.admins();
   let admin = await store.get('main', { type: 'json', consistency: 'strong' });
   if (admin) return admin;
-  const bootstrap = String(process.env.ADMIN_BOOTSTRAP_PASSWORD || '');
+  const bootstrap = String(process.env.ADMIN_BOOTSTRAP_PASSWORD || process.env.admin_dpt || process.env.ADMIN_DPT || '');
   if (bootstrap.length < 8) {
     throw new Error('ADMIN_BOOTSTRAP_PASSWORD belum diatur atau kurang dari 8 karakter.');
   }

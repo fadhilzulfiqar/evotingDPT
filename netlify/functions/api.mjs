@@ -150,7 +150,7 @@ async function getUserByUsername(username) {
   return await getUserById(map.id);
 }
 
-async function getVoteForUser(id) {
+async function getVoteLock(id) {
   return await stores.votes().get(`voter/${id}`, { type: 'json', consistency: 'strong' });
 }
 
@@ -185,25 +185,27 @@ async function addUser({ name, username, password }) {
 async function getAdminStats() {
   const usersStore = stores.users();
   const votesStore = stores.votes();
-  const [userList, voteList, cfg] = await Promise.all([
+  const [userList, lockList, ballotList, cfg] = await Promise.all([
     usersStore.list({ prefix: 'user/' }),
     votesStore.list({ prefix: 'voter/' }),
+    votesStore.list({ prefix: 'ballot/' }),
     getConfig()
   ]);
 
   const users = (await Promise.all(userList.blobs.map(b => usersStore.get(b.key, { type: 'json' })))).filter(Boolean);
-  const votes = (await Promise.all(voteList.blobs.map(b => votesStore.get(b.key, { type: 'json', consistency: 'strong' })))).filter(Boolean);
-  const voteByVoter = new Map(votes.map(v => [v.voterId, v]));
+  const locks = (await Promise.all(lockList.blobs.map(b => votesStore.get(b.key, { type: 'json', consistency: 'strong' })))).filter(Boolean);
+  const ballots = (await Promise.all(ballotList.blobs.map(b => votesStore.get(b.key, { type: 'json', consistency: 'strong' })))).filter(Boolean);
+  const lockByVoter = new Map(locks.map(v => [v.voterId, v]));
   const counts = Object.fromEntries(cfg.candidates.map(c => [c.id, 0]));
   let updatedAt = null;
-  for (const v of votes) {
-    if (Object.prototype.hasOwnProperty.call(counts, v.candidateId)) counts[v.candidateId] += 1;
-    if (v.votedAt && (!updatedAt || v.votedAt > updatedAt)) updatedAt = v.votedAt;
+  for (const ballot of ballots) {
+    if (Object.prototype.hasOwnProperty.call(counts, ballot.candidateId)) counts[ballot.candidateId] += 1;
+    if (ballot.votedAt && (!updatedAt || ballot.votedAt > updatedAt)) updatedAt = ballot.votedAt;
   }
   const safeUsers = users
     .map(u => {
-      const v = voteByVoter.get(u.id);
-      return { id: u.id, name: u.name, username: u.username, hasVoted: Boolean(v), votedAt: v?.votedAt || null };
+      const lock = lockByVoter.get(u.id);
+      return { id: u.id, name: u.name, username: u.username, hasVoted: Boolean(lock), votedAt: lock?.votedAt || null };
     })
     .sort((a, b) => a.name.localeCompare(b.name, 'id'));
   const voted = safeUsers.filter(u => u.hasVoted).length;
@@ -241,17 +243,17 @@ export async function handler(event) {
       if (!s) return json(200, { loggedIn: false });
       const user = await getUserById(s.id);
       if (!user) return json(200, { loggedIn: false });
-      const vote = await getVoteForUser(user.id);
-      return json(200, { loggedIn: true, user: { name: user.name, username: user.username, hasVoted: Boolean(vote), votedAt: vote?.votedAt || null } });
+      const lock = await getVoteLock(user.id);
+      return json(200, { loggedIn: true, user: { name: user.name, username: user.username, hasVoted: Boolean(lock), votedAt: lock?.votedAt || null } });
     }
 
     if (method === 'POST' && route === '/login') {
       const body = parseBody(event);
       const user = await getUserByUsername(body.username);
       if (!user || !verifyPassword(body.password, user.passwordHash)) return json(401, { error: 'NIT/username atau password salah.' });
-      const vote = await getVoteForUser(user.id);
+      const lock = await getVoteLock(user.id);
       const cookie = await createSession(event, 'voter', user.id);
-      return json(200, { ok: true, user: { name: user.name, username: user.username, hasVoted: Boolean(vote) } }, { 'set-cookie': cookie });
+      return json(200, { ok: true, user: { name: user.name, username: user.username, hasVoted: Boolean(lock) } }, { 'set-cookie': cookie });
     }
 
     if (method === 'POST' && route === '/logout') {
@@ -269,9 +271,45 @@ export async function handler(event) {
       const cfg = await getConfig();
       if (cfg.status !== 'open') return json(403, { error: 'Pemungutan suara sedang tidak dibuka.' });
       if (!cfg.candidates.some(c => c.id === candidateId)) return json(400, { error: 'Paslon tidak valid.' });
-      const votedAt = new Date().toISOString();
-      const result = await stores.votes().setJSON(`voter/${user.id}`, { voterId: user.id, candidateId, votedAt }, { onlyIfNew: true });
-      if (!result.modified) return json(409, { error: 'Hak suara akun ini sudah digunakan.' });
+      const votes = stores.votes();
+      let lock = await getVoteLock(user.id);
+      let chosenCandidate = candidateId;
+      let ballotId;
+      let votedAt;
+
+      if (lock) {
+        if (lock.state === 'done') return json(409, { error: 'Hak suara akun ini sudah digunakan.' });
+        if (lock.state !== 'pending' || !lock.ballotId || !lock.candidateId) return json(409, { error: 'Status suara akun ini sedang diproses. Silakan muat ulang halaman.' });
+        chosenCandidate = lock.candidateId;
+        ballotId = lock.ballotId;
+        votedAt = lock.votedAt || new Date().toISOString();
+      } else {
+        ballotId = crypto.randomUUID();
+        votedAt = new Date().toISOString();
+        const lockResult = await votes.setJSON(
+          `voter/${user.id}`,
+          { voterId: user.id, state: 'pending', candidateId: chosenCandidate, ballotId, votedAt },
+          { onlyIfNew: true }
+        );
+        if (!lockResult.modified) {
+          lock = await getVoteLock(user.id);
+          if (!lock || lock.state === 'done') return json(409, { error: 'Hak suara akun ini sudah digunakan.' });
+          chosenCandidate = lock.candidateId;
+          ballotId = lock.ballotId;
+          votedAt = lock.votedAt || votedAt;
+        }
+      }
+
+      const ballotKey = `ballot/${ballotId}`;
+      const ballotResult = await votes.setJSON(ballotKey, { candidateId: chosenCandidate, votedAt }, { onlyIfNew: true });
+      if (!ballotResult.modified) {
+        const existing = await votes.get(ballotKey, { type: 'json', consistency: 'strong' });
+        if (!existing || existing.candidateId !== chosenCandidate) {
+          return json(500, { error: 'Gagal memverifikasi surat suara. Hubungi panitia.' });
+        }
+      }
+
+      await votes.setJSON(`voter/${user.id}`, { voterId: user.id, state: 'done', votedAt });
       return json(200, { ok: true, message: 'Suara berhasil direkam.', votedAt });
     }
 
@@ -349,7 +387,7 @@ export async function handler(event) {
       const id = String(body.id || '');
       const user = await getUserById(id);
       if (!user) return json(404, { error: 'Pemilih tidak ditemukan.' });
-      if (await getVoteForUser(id)) return json(409, { error: 'Pemilih yang sudah menggunakan hak suara tidak dapat dihapus.' });
+      if (await getVoteLock(id)) return json(409, { error: 'Pemilih yang sudah menggunakan hak suara tidak dapat dihapus.' });
       const users = stores.users();
       await Promise.all([
         users.delete(`user/${id}`),

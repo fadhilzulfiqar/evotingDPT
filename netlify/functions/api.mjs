@@ -3,7 +3,6 @@ import crypto from 'node:crypto';
 
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const USERNAME_RE = /^[A-Za-z0-9._@+-]{2,80}$/;
-const OLD_ADMIN_HASH = '0e9dea76c15a242e64fd6701cf1680d7:27838ded0eb058e9ba8ed810f01ab6537cd32261ffeab5084ab9d56bf2c8cd09df18454f2d8677f78300ad6084f7ee018543d5225dc9962eb805d9d4a152dfd6';
 
 const DEFAULT_CONFIG = {
   title: 'Pemilihan Ketua & Wakil Ketua DPT',
@@ -131,8 +130,10 @@ async function ensureAdmin() {
   let admin = await store.get('main', { type: 'json', consistency: 'strong' });
   if (admin) return admin;
   const bootstrap = String(process.env.ADMIN_BOOTSTRAP_PASSWORD || '');
-  const passwordHash = bootstrap.length >= 8 ? hashPassword(bootstrap) : OLD_ADMIN_HASH;
-  const seed = { username: 'admin_dpt', passwordHash, updatedAt: new Date().toISOString() };
+  if (bootstrap.length < 8) {
+    throw new Error('ADMIN_BOOTSTRAP_PASSWORD belum diatur atau kurang dari 8 karakter.');
+  }
+  const seed = { username: 'admin_dpt', passwordHash: hashPassword(bootstrap), updatedAt: new Date().toISOString() };
   const result = await store.setJSON('main', seed, { onlyIfNew: true });
   if (result.modified) return seed;
   return await store.get('main', { type: 'json', consistency: 'strong' });
@@ -417,7 +418,7 @@ export async function handler(event) {
     return json(404, { error: 'Endpoint tidak ditemukan.' });
   } catch (error) {
     console.error('Evoting API error', error);
-    const message = error?.message === 'Payload terlalu besar.' || error?.message === 'JSON tidak valid.' ? error.message : 'Terjadi kesalahan pada server.';
+    const message = error?.message === 'Payload terlalu besar.' || error?.message === 'JSON tidak valid.' || error?.message?.startsWith('ADMIN_BOOTSTRAP_PASSWORD') ? error.message : 'Terjadi kesalahan pada server.';
     return json(error?.message === 'Payload terlalu besar.' ? 413 : 500, { error: message });
   }
 }

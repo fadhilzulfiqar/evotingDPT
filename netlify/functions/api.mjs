@@ -1,4 +1,4 @@
-import { getStore } from '@netlify/blobs';
+import { connectLambda, getStore } from '@netlify/blobs';
 import crypto from 'node:crypto';
 
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
@@ -235,6 +235,10 @@ export async function handler(event) {
   const route = routeFromEvent(event);
 
   try {
+    // This function uses the Lambda-compatible handler signature. Initialize
+    // Netlify Blobs from the incoming Lambda event before opening any stores.
+    connectLambda(event);
+
     if (method === 'GET' && route === '/health') return json(200, { ok: true, storage: 'netlify-blobs' });
 
     if (method === 'GET' && route === '/election') return json(200, await getConfig());

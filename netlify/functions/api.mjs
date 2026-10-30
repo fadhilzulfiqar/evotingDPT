@@ -1,4 +1,4 @@
-import { connectLambda, getStore } from '@netlify/blobs';
+import { getStore } from '@netlify/blobs';
 import crypto from 'node:crypto';
 
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
@@ -230,15 +230,11 @@ function routeFromEvent(event) {
   return p || '/';
 }
 
-export async function handler(event) {
+async function handleEvent(event) {
   const method = String(event.httpMethod || 'GET').toUpperCase();
   const route = routeFromEvent(event);
 
   try {
-    // This function uses the Lambda-compatible handler signature. Initialize
-    // Netlify Blobs from the incoming Lambda event before opening any stores.
-    connectLambda(event);
-
     if (method === 'GET' && route === '/health') return json(200, { ok: true, storage: 'netlify-blobs' });
 
     if (method === 'GET' && route === '/election') return json(200, await getConfig());
@@ -425,4 +421,26 @@ export async function handler(event) {
     const message = error?.message === 'Payload terlalu besar.' || error?.message === 'JSON tidak valid.' || error?.message?.startsWith('ADMIN_BOOTSTRAP_PASSWORD') ? error.message : 'Terjadi kesalahan pada server.';
     return json(error?.message === 'Payload terlalu besar.' ? 413 : 500, { error: message });
   }
+}
+
+// Netlify Functions v2 adapter. The modern Request/Response runtime injects
+// the full Netlify Blobs environment, including the uncached edge URL needed
+// by strong-consistency reads. The existing API routing logic stays intact.
+export default async function handler(request) {
+  const url = new URL(request.url);
+  const method = request.method.toUpperCase();
+  const body = method === 'GET' || method === 'HEAD' ? '' : await request.text();
+  const event = {
+    path: url.pathname,
+    httpMethod: method,
+    headers: Object.fromEntries(request.headers.entries()),
+    queryStringParameters: Object.fromEntries(url.searchParams.entries()),
+    body,
+    isBase64Encoded: false
+  };
+  const result = await handleEvent(event);
+  return new Response(result.body ?? '', {
+    status: result.statusCode || 200,
+    headers: result.headers || {}
+  });
 }

@@ -201,8 +201,9 @@
     form.addEventListener("submit", async function (event) {
       event.preventDefault();
       const d = getDB();
+      const username = document.getElementById("adminUsername").value.trim();
       const password = document.getElementById("adminPassword").value;
-      if (await hash(password) !== d.adminHash) {
+      if (username !== "admin_dpt" || await hash(password) !== d.adminHash) {
         toast("adminLoginFeedback", "Password admin salah.", "error");
         return;
       }

@@ -41,11 +41,6 @@
     if (!d.config) d.config = freshData().config;
     if (!Array.isArray(d.config.candidates) || d.config.candidates.length !== 2) d.config.candidates = JSON.parse(JSON.stringify(DEFAULT_CANDIDATES));
     if (!Array.isArray(d.users)) d.users = [];
-    SEED_USERS.forEach(function (u) {
-      if (!d.users.some(function (x) { return x.username === u.username; })) {
-        d.users.push(Object.assign({}, u, { hasVoted: false, isSeed: true }));
-      }
-    });
     if (!d.votes) d.votes = { "01": 0, "02": 0 };
     if (typeof d.votes["01"] !== "number") d.votes["01"] = 0;
     if (typeof d.votes["02"] !== "number") d.votes["02"] = 0;

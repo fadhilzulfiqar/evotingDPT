@@ -1,35 +1,37 @@
-# EvotingDPT
+# EvotingDPT — Redesign Futuristik
 
-E-Voting Ketua dan Wakil Ketua DPT Politeknik Agraria STPN Periode 2026–2027.
+URL GitHub Pages:
+- Pemilih: https://fadhilzulfiqar.github.io/evotingDPT/
+- Admin: https://fadhilzulfiqar.github.io/evotingDPT/admin.html
 
-## Deploy online gratis
+## File utama
+- index.html: portal pemilih
+- admin.html: portal admin
+- style.css: tema futuristik emas/gelap
+- app.js: logika demo lokal
+- assets/: logo DPT dan empat foto kandidat
 
-Repository ini sudah disiapkan untuk **Render Free Web Service + Render Postgres** menggunakan `render.yaml`.
+## Upload aset visual
+Ekstrak file `EvotingDPT_assets_upload.zip`, lalu unggah semua file di dalam folder `assets` ke folder `assets` pada repository GitHub.
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/fadhilzulfiqar/evotingDPT)
+Nama file harus persis:
+- logo-dpt.webp
+- paslon-01-ketua.webp
+- paslon-01-wakil.webp
+- paslon-02-ketua.webp
+- paslon-02-wakil.webp
 
-Setelah deployment selesai, Render akan memberikan URL publik berbentuk `https://evotingdpt-....onrender.com`.
+Urutan foto mengikuti urutan unggahan: Ketua Paslon 01, Wakil Paslon 01, Ketua Paslon 02, Wakil Paslon 02.
 
-### Halaman
-- Pemilih: `/`
-- Admin: `/admin`
+## Batasan penting GitHub Pages
+GitHub Pages hanya menyediakan hosting statis. Versi ini adalah prototipe/latihan:
+- akun dan password diperiksa di browser;
+- data suara dan status pemilih disimpan di localStorage browser;
+- data dari HP pemilih tidak otomatis masuk ke dashboard admin;
+- satu akun bisa mencoba lagi dari perangkat/browser lain;
+- perubahan kandidat/foto/visi/misi dari admin hanya tersimpan pada browser admin.
 
-### Login admin awal
-- Username: `admin_dpt`
-- Password: `GantiPasswordAdmin2026!`
+Karena itu jangan gunakan versi ini untuk pemilihan resmi lintas perangkat. Pemilihan resmi memerlukan backend dan database terpusat dengan validasi server-side.
 
-**Segera ganti password admin setelah deployment pertama.**
-
-## Fitur
-- 2 pasangan calon, foto/nama/visi/misi dapat diedit dari admin.
-- Login pemilih dengan username/NIM dan password unik.
-- Satu akun hanya dapat memilih satu kali.
-- Identitas pemilih dipisahkan dari agregat suara.
-- Dashboard admin: total pemilih, sudah/belum memilih, partisipasi, hasil suara.
-- Tambah pemilih satu per satu atau massal.
-- Hapus pemilih yang belum memilih.
-- Reset Data Latihan untuk mengembalikan seluruh suara ke 0 dan membuka kembali hak pilih seluruh akun.
-- Penyimpanan online menggunakan PostgreSQL.
-
-## Catatan Render Free
-Render Free Web Service dapat tidur setelah tidak aktif dan membutuhkan waktu untuk bangun saat kunjungan pertama. Render Postgres Free saat ini memiliki masa berlaku terbatas, sehingga gunakan untuk latihan/pemilihan jangka pendek dan simpan rekap hasil setelah kegiatan selesai.
+## Keamanan
+Password awal dibagikan terpisah kepada pemilik akun. Jangan menyimpan password dalam repository publik. Segera ganti password admin pada perangkat admin jika memakai simulasi.

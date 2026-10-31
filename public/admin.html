@@ -3,8 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#080d18">
-  <title>Admin E-Voting DPT</title>
+  <meta name="theme-color" content="#0b1424">
+  <meta name="description" content="Dashboard administrator E-Voting Dewan Perwakilan Taruna Politeknik Agraria STPN.">
+  <title>Admin E-Voting DPT | Control Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body class="admin-body" data-page="admin">
@@ -13,7 +16,7 @@
       <a class="brand" href="/">
         <div><div class="brand-title">Dewan Perwakilan Taruna</div><div class="brand-sub">Politeknik Agraria STPN • 2026–2027</div></div>
       </a>
-      <span class="eyebrow">AKSES TERBATAS</span>
+      <span class="eyebrow">AKSES TERBATAS · PANITIA</span>
       <h1>Dashboard Admin</h1>
       <p class="muted">Masuk untuk mengelola pasangan calon, data pemilih, pengaturan, dan rekapitulasi suara.</p>
       <div id="adminLoginFeedback" class="form-feedback" aria-live="polite"></div>
@@ -21,7 +24,7 @@
       <label class="field"><span>Password admin</span><input id="adminPassword" type="password" autocomplete="current-password" placeholder="Masukkan password admin" required></label>
       <button class="btn btn-gold" id="adminLoginButton" type="submit">Masuk dashboard →</button>
       <a class="admin-link back-link" href="/">← Kembali ke halaman pemilih</a>
-      <div class="notice-box">Password awal dibaca dari variabel Netlify <b>ADMIN_BOOTSTRAP_PASSWORD</b> atau variabel lama <b>admin_dpt</b>. Setelah masuk, password dapat diganti melalui menu Keamanan Admin.</div>
+      <div class="notice-box">Akses ini khusus panitia. Gunakan password administrator yang telah ditetapkan dan jangan membagikannya kepada pemilih.</div>
     </form>
   </section>
 
@@ -42,7 +45,8 @@
     <main class="admin-main">
       <div class="admin-topbar">
         <div class="admin-topbar-brand">
-        <div><h2 id="adminElectionName">Pemilihan Ketua & Wakil Ketua DPT</h2><p>Dewan Perwakilan Taruna · 2026–2027</p></div></div>
+          <div><h2 id="adminElectionName">Pemilihan Ketua &amp; Wakil Ketua DPT</h2><p>CONTROL CENTER · DEWAN PERWAKILAN TARUNA · 2026–2027</p></div>
+        </div>
         <div class="button-row">
           <a class="btn btn-outline btn-small" href="/">Lihat portal pemilih ↗</a>
           <button class="btn btn-danger btn-small" type="button" onclick="window.EvotingAdmin.logout()">Keluar</button>

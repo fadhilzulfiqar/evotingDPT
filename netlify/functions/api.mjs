@@ -441,8 +441,14 @@ async function handleEvent(event) {
     }
 
     if (method === 'POST' && route === '/admin/reset-practice') {
+      const cfg = await getConfig();
+      if (cfg.status === 'open') {
+        return json(409, { error: 'Tutup pemilihan terlebih dahulu sebelum melakukan reset suara.' });
+      }
+      // Clear ballots and vote locks only; voter accounts, candidate settings,
+      // and administrator credentials are intentionally preserved.
       await stores.votes().deleteAll();
-      return json(200, { ok: true });
+      return json(200, { ok: true, message: 'Seluruh suara dihapus; akun pemilih tetap tersimpan.' });
     }
 
     if (method === 'POST' && route === '/admin/password') {

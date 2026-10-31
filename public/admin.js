@@ -316,7 +316,7 @@
       alert('Akun yang sudah menggunakan hak suara tidak dapat dihapus.');
       return;
     }
-    if (!confirm('Hapus akun pemilih ' + user.name + ' (' + user.username + ')?')) return;
+    if (!confirm('PERINGATAN: Hapus akun pemilih ' + user.name + ' (' + user.username + ')? Data akun akan dihapus permanen dan tidak dapat dipulihkan.')) return;
     try {
       await api('/admin/users/delete', { method: 'POST', body: JSON.stringify({ id: id }) });
       await loadStats();
@@ -330,8 +330,12 @@
   function filterVoters() { renderVoterRows(); }
 
   async function resetElection() {
-    if (!confirm('Reset akan menghapus seluruh hasil suara dan mengubah semua status pemilih menjadi BELUM MEMILIH. Daftar pemilih tetap tersimpan. Lanjutkan?')) return;
-    if (!confirm('Konfirmasi terakhir: reset seluruh hasil pemilihan sekarang?')) return;
+    if (stats && stats.config && stats.config.status === 'open') {
+      message('adminFeedback', 'Tutup pemilihan terlebih dahulu sebelum menghapus suara atau melakukan reset.', 'error');
+      return;
+    }
+    if (!confirm('PERINGATAN: Reset akan menghapus SELURUH surat suara dan mengubah semua status pemilih menjadi BELUM MEMILIH. Daftar akun pemilih tetap tersimpan. Tindakan ini tidak dapat dibatalkan. Lanjutkan?')) return;
+    if (!confirm('KONFIRMASI AKHIR: Anda menyetujui penghapusan seluruh suara pada pemilihan ini? Pastikan hasil sebelumnya sudah diarsipkan.')) return;
     try {
       await api('/admin/reset-practice', { method: 'POST', body: '{}' });
       await loadStats();

@@ -12,11 +12,26 @@
     });
   }
 
+  function showAdminSessionExpired() {
+    var shell = $('#adminShell');
+    var loginView = $('#adminLoginView');
+    if (!shell || shell.classList.contains('hidden')) return false;
+    shell.classList.add('hidden');
+    loginView.classList.remove('hidden');
+    currentTab = 'overview';
+    message('adminLoginFeedback', 'Sesi administrator telah berakhir atau tidak dikenali. Silakan login kembali. Perubahan yang belum disimpan perlu diulangi.', 'error');
+    return true;
+  }
+
   async function api(path, options) {
-    var opt = Object.assign({ method: 'GET', credentials: 'same-origin', headers: {} }, options || {});
+    var opt = Object.assign({ method: 'GET', credentials: 'same-origin', cache: 'no-store', headers: {} }, options || {});
     opt.headers = Object.assign({ 'Content-Type': 'application/json' }, opt.headers || {});
     var response = await fetch(API + path, opt);
     var data = await response.json().catch(function () { return {}; });
+    if (response.status === 401 && path !== '/admin/login') {
+      var hadAdminSession = showAdminSessionExpired();
+      throw new Error(hadAdminSession ? 'Sesi admin berakhir.' : (data.error || 'Unauthorized'));
+    }
     if (!response.ok) throw new Error(data.error || 'Permintaan tidak dapat diproses.');
     return data;
   }
@@ -200,7 +215,10 @@
       });
       $('#adminPassword').value = '';
       currentTab = 'overview';
-      await loadStats();
+      var loaded = await loadStats();
+      if (!loaded) {
+        message('adminLoginFeedback', 'Login diterima, tetapi sesi administrator belum dapat diverifikasi. Coba login kembali. Jika tetap terjadi, periksa cookie browser dan konfigurasi Netlify Functions.', 'error');
+      }
     } catch (error) {
       var text = error.message;
       if (text.indexOf('ADMIN_BOOTSTRAP_PASSWORD') >= 0) {

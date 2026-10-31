@@ -8,12 +8,12 @@
       tableHead.appendChild(th);
     }
     const titleRow=document.querySelector('#pemilih .section-title');
-    if(titleRow && !document.querySelector('#resetPracticeBtn')){
+    if(titleRow && !document.querySelector('#resetElectionBtn')){
       const btn=document.createElement('button');
-      btn.id='resetPracticeBtn';
+      btn.id='resetElectionBtn';
       btn.className='btn btn-danger';
-      btn.textContent='RESET DATA LATIHAN';
-      btn.onclick=resetPractice;
+      btn.textContent='RESET PEMILIHAN';
+      btn.onclick=resetElection;
       titleRow.appendChild(btn);
     }
   }
@@ -21,7 +21,7 @@
   window.deleteUser=async function(id){
     const u=data?.users?.find(x=>x.id===id);
     if(!u)return;
-    if(u.hasVoted){alert('Pemilih yang sudah memilih tidak bisa langsung dihapus. Gunakan Reset Data Latihan terlebih dahulu.');return;}
+    if(u.hasVoted){alert('Pemilih yang sudah memilih tidak bisa langsung dihapus. Gunakan Reset Pemilihan terlebih dahulu.');return;}
     if(!confirm(`Hapus pemilih ${u.name} (${u.username})?`))return;
     try{
       await api('/api/admin/users/delete',{method:'POST',body:JSON.stringify({id})});
@@ -30,13 +30,13 @@
     }catch(e){alert(e.message)}
   };
 
-  window.resetPractice=async function(){
-    if(!confirm('Reset latihan akan menghapus seluruh perolehan suara dan mengubah semua akun menjadi BELUM MEMILIH. Lanjutkan?'))return;
-    if(!confirm('Konfirmasi sekali lagi: reset seluruh hasil latihan sekarang?'))return;
+  window.resetElection=async function(){
+    if(!confirm('Reset pemilihan akan menghapus seluruh perolehan suara dan mengubah semua akun menjadi BELUM MEMILIH. Lanjutkan?'))return;
+    if(!confirm('Konfirmasi sekali lagi: reset seluruh hasil pemilihan sekarang?'))return;
     try{
       await api('/api/admin/reset-practice',{method:'POST',body:'{}'});
       await loadStats();
-      alert('Data latihan berhasil direset. Daftar pemilih tetap tersimpan.');
+      alert('Data pemilihan berhasil direset. Daftar pemilih tetap tersimpan.');
     }catch(e){alert(e.message)}
   };
 

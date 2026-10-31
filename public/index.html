@@ -6,12 +6,12 @@
   <meta name="theme-color" content="#080d18">
   <meta name="description" content="Portal E-Voting Dewan Perwakilan Taruna Politeknik Agraria STPN Periode 2026–2027.">
   <title>E-Voting DPT | Pemilihan 2026–2027</title>
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="icon" type="image/png" href="/assets/logo-dpt-resmi.png">\n  <link rel="stylesheet" href="/styles.css">
 </head>
 <body data-page="vote">
   <header class="site-header">
     <a class="brand" href="/">
-      <div class="brand-mark" aria-hidden="true">DPT</div>
+      <img class="brand-logo" src="/assets/logo-dpt-resmi.png" alt="Logo resmi Dewan Perwakilan Taruna" width="64" height="64">
       <div>
         <div class="brand-title">Dewan Perwakilan Taruna</div>
         <div class="brand-sub">Politeknik Agraria STPN • 2026–2027</div>
@@ -35,14 +35,12 @@
           <span class="hero-pill"><b>03</b> Transparan & bertanggung jawab</span>
         </div>
       </div>
-      <div class="hero-emblem" aria-label="Lambang DPT">
-        <div class="orbit"></div>
-        <div class="orbit two"></div>
-        <div class="emblem-mark"><b>DPT</b><small>POLITEKNIK AGRARIA STPN</small><span>2026 — 2027</span></div>
+      <div class="hero-emblem" aria-label="Logo resmi Dewan Perwakilan Taruna">
+        <img class="hero-official-logo" src="/assets/logo-dpt-resmi.png" alt="Logo resmi Dewan Perwakilan Taruna Politeknik Agraria STPN" width="176" height="176">
       </div>
     </section>
 
-    <div class="demo-alert" id="systemNotice">
+    <div class="system-alert" id="systemNotice">
       <b>INFORMASI SISTEM:</b> Portal ini terhubung dengan server Netlify. Data pemilih dan rekap suara disimpan terpusat sehingga dapat diakses lintas perangkat.
     </div>
 
@@ -51,7 +49,7 @@
         <div>
           <span class="eyebrow">PORTAL PEMILIH</span>
           <h2>Masuk ke ruang pemilihan</h2>
-          <p>Gunakan username/NIT dan password yang diberikan panitia.</p>
+          <p>Gunakan username dan password yang diberikan panitia.</p>
         </div>
         <span id="siteStatus" class="status-chip">Memeriksa status...</span>
       </div>
@@ -62,8 +60,8 @@
           <p>Masuk untuk melihat profil pasangan calon dan menggunakan hak suara Anda.</p>
           <div id="loginFeedback" class="form-feedback" aria-live="polite"></div>
           <label class="field">
-            <span>Username / NIT</span>
-            <input id="voterUsername" name="username" autocomplete="username" placeholder="Masukkan username atau NIT" required>
+            <span>Username</span>
+            <input id="voterUsername" name="username" autocomplete="username" placeholder="Masukkan username" required>
           </label>
           <label class="field">
             <span>Password</span>

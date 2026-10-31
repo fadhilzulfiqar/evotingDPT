@@ -163,13 +163,13 @@
   }
 
   function renderSettings() {
-    var html = heading('PENGATURAN AKSES', 'Keamanan admin', 'Ganti password administrator dan kelola data simulasi sebelum pemilihan resmi.');
+    var html = heading('PENGATURAN AKSES', 'Keamanan admin', 'Ganti password administrator dan kelola pengaturan pemilihan.');
     html += '<section class="panel"><span class="eyebrow">GANTI KREDENSIAL</span><h2>Perbarui password admin</h2><p class="tiny muted">Username admin tetap <b>admin_dpt</b>. Password baru minimal 8 karakter. Setelah diganti, Anda akan diminta login kembali.</p>';
     html += '<div class="form-grid"><label>Password admin saat ini<input id="oldAdminPassword" type="password" autocomplete="current-password"></label><label>Password admin baru<input id="newAdminPassword" type="password" autocomplete="new-password" minlength="8"></label></div>';
     html += '<div class="form-action" style="margin-top:14px"><button class="btn btn-gold" type="button" onclick="window.EvotingAdmin.changePassword()">Ganti password admin</button></div></section>';
-    html += '<section class="panel"><span class="eyebrow">SIMULASI</span><h2>Reset data latihan</h2><p class="muted">Fitur ini menghapus seluruh surat suara dan status sudah/belum memilih, tetapi daftar akun pemilih tetap tersimpan. Gunakan hanya setelah simulasi latihan selesai dan sebelum pemilihan resmi dimulai.</p>';
-    html += '<div class="notice-box">Perhatian: reset tidak dapat dibatalkan. Jangan gunakan fitur ini ketika pemungutan suara resmi sedang berlangsung.</div>';
-    html += '<button class="btn btn-danger" type="button" onclick="window.EvotingAdmin.resetPractice()">Reset data latihan</button></section>';
+    html += '<section class="panel"><span class="eyebrow">PENGATURAN PEMILIHAN</span><h2>Reset pemilihan</h2><p class="muted">Fitur ini menghapus seluruh surat suara dan mengubah status semua pemilih menjadi BELUM MEMILIH. Daftar akun pemilih tetap tersimpan. Gunakan hanya jika pemilihan memang harus diulang berdasarkan keputusan panitia.</p>';
+    html += '<div class="notice-box">Perhatian: tindakan ini tidak dapat dibatalkan. Pastikan hasil sebelumnya sudah diarsipkan dan reset telah disetujui panitia berwenang. Jangan gunakan saat pemungutan suara sedang berlangsung.</div>';
+    html += '<button class="btn btn-danger" type="button" onclick="window.EvotingAdmin.resetElection()">Reset pemilihan</button></section>';
     html += '<section class="panel"><span class="eyebrow">STATUS SERVER</span><h2>Penyimpanan terpusat</h2><p class="muted">Aplikasi menggunakan Netlify Functions dan Netlify Blobs. Source code dan aset visual tetap dikelola melalui repository GitHub.</p><div class="notice-box">URL API: <b>/api/health</b><br>Storage: <b>Netlify Blobs</b><br>Branch deployment: <b>main</b></div></section>';
     $('#adminContent').innerHTML = html;
   }
@@ -329,14 +329,14 @@
 
   function filterVoters() { renderVoterRows(); }
 
-  async function resetPractice() {
+  async function resetElection() {
     if (!confirm('Reset akan menghapus seluruh hasil suara dan mengubah semua status pemilih menjadi BELUM MEMILIH. Daftar pemilih tetap tersimpan. Lanjutkan?')) return;
-    if (!confirm('Konfirmasi terakhir: reset seluruh data latihan sekarang?')) return;
+    if (!confirm('Konfirmasi terakhir: reset seluruh hasil pemilihan sekarang?')) return;
     try {
       await api('/admin/reset-practice', { method: 'POST', body: '{}' });
       await loadStats();
       renderTab('settings');
-      message('adminFeedback', 'Data latihan berhasil direset. Daftar pemilih tetap tersimpan.', 'success');
+      message('adminFeedback', 'Data pemilihan berhasil direset. Daftar pemilih tetap tersimpan.', 'success');
     } catch (error) {
       message('adminFeedback', error.message, 'error');
     }
@@ -383,7 +383,7 @@
     bulkImport: bulkImport,
     deleteVoter: deleteVoter,
     filterVoters: filterVoters,
-    resetPractice: resetPractice,
+    resetElection: resetElection,
     changePassword: changePassword,
     logout: logout
   };

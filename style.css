@@ -4,3 +4,26 @@
 @media(max-width:900px){.hero{grid-template-columns:1fr .5fr}.hero-emblem img{width:200px;height:200px}.hero-emblem .orbit{width:240px;height:130px}.admin-shell{grid-template-columns:210px 1fr}.admin-main{padding:22px}.stats-grid{grid-template-columns:repeat(2,1fr)}.candidate-edit-grid{grid-template-columns:1fr}}
 @media(max-width:700px){.site-header{padding:16px;align-items:flex-start}.brand img{width:48px;height:48px}.brand-title{font-size:11px}.brand-sub{font-size:9px}.header-right{gap:7px}.top-tag{display:none}.admin-link{font-size:10px;padding:8px 10px}.container{width:calc(100% - 24px)}.hero{grid-template-columns:1fr;padding:22px 4px 26px;min-height:0}.hero-copy h1{font-size:42px}.hero-emblem{display:none}.login-layout{grid-template-columns:1fr}.login-side{min-height:220px}.candidate-grid{grid-template-columns:1fr}.person-card img{height:245px}.welcome-panel{padding:18px;align-items:flex-start}.welcome-panel h2{font-size:21px}.admin-shell{display:block}.admin-sidebar{position:sticky;top:0;z-index:10;padding:10px 12px;border-right:0;border-bottom:1px solid rgba(255,255,255,.1);display:block;backdrop-filter:blur(18px)}.admin-sidebar .brand{display:none}.admin-nav{display:flex;overflow:auto;gap:5px}.admin-nav button{white-space:nowrap;padding:10px 12px;font-size:10px}.admin-nav button:before{display:none}.sidebar-bottom{display:none}.admin-main{padding:18px 13px}.admin-topbar{margin-bottom:17px}.admin-topbar h2{font-size:16px}.page-heading{align-items:flex-start;flex-direction:column}.page-heading h1{font-size:25px}.dashboard-grid{grid-template-columns:1fr}.stats-grid{gap:8px}.stat-card{padding:14px}.stat-value{font-size:25px}.candidate-copy{grid-template-columns:1fr}.candidate-copy blockquote{grid-column:auto}.form-grid{grid-template-columns:1fr}.form-grid label.full{grid-column:auto}.panel{padding:16px}.panel-head{align-items:flex-start;flex-direction:column}.search-input{max-width:none;width:100%}.stats-grid.compact{grid-template-columns:1fr}.edit-photos img{height:150px}}
 @media(max-width:390px){.hero-copy h1{font-size:36px}.people-grid{gap:7px;padding:12px 12px 0}.person-card img{height:210px}.person-caption{padding:9px}.person-caption strong{font-size:10px}.candidate-top{padding:14px 14px 0}.candidate-copy{padding:14px}.btn-vote{width:calc(100% - 24px);margin:10px 12px 14px}}
+
+/* Text-only identity: no crest or image logo is loaded in either portal. */
+.brand{gap:0;min-width:0}
+.brand img,.brand-logo,.hero-emblem,.admin-topbar-brand img{display:none!important}
+.site-header .brand{max-width:100%}
+.site-header .brand-title{font-size:15px;line-height:1.35}
+.hero{grid-template-columns:minmax(0,1fr);min-height:300px;padding:38px 12px 42px}
+.hero-copy{max-width:920px}
+.hero-copy p{max-width:720px}
+.admin-login .brand{padding:0 0 18px;margin-bottom:22px;border-bottom:1px solid rgba(255,255,255,.12)}
+.admin-sidebar .brand{padding:0 6px 18px;border-bottom:1px solid rgba(255,255,255,.1)}
+.admin-topbar-brand{display:flex;align-items:center;min-width:0}
+.admin-topbar-brand>div{min-width:0}
+@media(max-width:700px){
+  .site-header{align-items:center;flex-wrap:wrap}
+  .site-header .brand-title{font-size:12px}
+  .site-header .brand-sub{font-size:9px}
+  .hero{padding:24px 4px 28px;min-height:0}
+  .hero-copy h1{font-size:clamp(36px,10vw,46px)}
+  .admin-topbar{align-items:flex-start;flex-direction:column}
+  .admin-topbar .button-row{width:100%}
+  .admin-topbar .button-row .btn{flex:1}
+}

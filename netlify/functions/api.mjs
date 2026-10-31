@@ -144,15 +144,42 @@ async function getConfig() {
 async function ensureAdmin() {
   const store = stores.admins();
   let admin = await store.get('main', { type: 'json', consistency: 'strong' });
-  if (admin) return admin;
   const bootstrap = String(process.env.ADMIN_BOOTSTRAP_PASSWORD || process.env.admin_dpt || process.env.ADMIN_DPT || '');
   if (bootstrap.length < 8) {
+    if (admin) return admin;
     throw new Error('ADMIN_BOOTSTRAP_PASSWORD belum diatur atau kurang dari 8 karakter.');
   }
-  const seed = { username: 'admin_dpt', passwordHash: hashPassword(bootstrap), updatedAt: new Date().toISOString() };
-  const result = await store.setJSON('main', seed, { onlyIfNew: true });
-  if (result.modified) return seed;
-  return await store.get('main', { type: 'json', consistency: 'strong' });
+
+  // A fingerprint lets the owner rotate the Netlify bootstrap variable to
+  // recover admin access. It is one-way and never stores the bootstrap secret.
+  const bootstrapFingerprint = crypto.createHash('sha256').update(bootstrap).digest('hex');
+
+  if (!admin) {
+    const seed = {
+      username: 'admin_dpt',
+      passwordHash: hashPassword(bootstrap),
+      bootstrapFingerprint,
+      updatedAt: new Date().toISOString()
+    };
+    const result = await store.setJSON('main', seed, { onlyIfNew: true });
+    if (result.modified) return seed;
+    admin = await store.get('main', { type: 'json', consistency: 'strong' });
+  }
+
+  // Existing installations created before fingerprint support are migrated
+  // once. Changing admin_dpt in Netlify intentionally resets the admin password.
+  if (admin && admin.bootstrapFingerprint !== bootstrapFingerprint) {
+    admin = {
+      ...admin,
+      username: 'admin_dpt',
+      passwordHash: hashPassword(bootstrap),
+      bootstrapFingerprint,
+      updatedAt: new Date().toISOString()
+    };
+    await store.setJSON('main', admin);
+  }
+
+  return admin;
 }
 
 async function getUserById(id) {

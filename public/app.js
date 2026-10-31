@@ -121,36 +121,47 @@
     selectedId = String(id);
     var candidate = (config.candidates || []).find(function (item) { return String(item.id) === selectedId; });
     if (!candidate) return;
-    $('#confirmText').innerHTML = 'Anda akan memilih <b>Paslon ' + esc(candidate.id) + '</b><br>' + esc(candidate.ketua) + ' & ' + esc(candidate.wakil) + '.';
+
+    $('#confirmText').innerHTML =
+      '<div class="selection-number">PASLON ' + esc(candidate.id) + '</div>' +
+      '<div class="selection-names"><span><small>CALON KETUA</small><b>' + esc(candidate.ketua || '-') + '</b></span>' +
+      '<span><small>CALON WAKIL KETUA</small><b>' + esc(candidate.wakil || '-') + '</b></span></div>';
+
     $('#agree').checked = false;
+    $('#sendVote').disabled = true;
+    $('#sendVote').innerHTML = 'Kirim suara <span>→</span>';
+    $('#voteError').textContent = '';
+    $('#voteError').classList.add('hidden');
     $('#confirmModal').classList.remove('hidden');
+    document.body.classList.add('modal-open');
+    $('#agree').focus();
   }
 
   function closeModal() {
     $('#confirmModal').classList.add('hidden');
+    document.body.classList.remove('modal-open');
     selectedId = null;
   }
 
   async function submitVote() {
-    if (!selectedId) return;
-    if (!$('#agree').checked) {
-      alert('Centang konfirmasi terlebih dahulu.');
-      return;
-    }
+    if (!selectedId || !$('#agree').checked) return;
     var button = $('#sendVote');
     button.disabled = true;
-    button.textContent = 'Merekam suara...';
+    button.textContent = 'Mengirim suara...';
+    $('#voteError').textContent = '';
+    $('#voteError').classList.add('hidden');
     try {
       await api('/vote', { method: 'POST', body: JSON.stringify({ candidateId: selectedId }) });
       $('#confirmModal').classList.add('hidden');
+      document.body.classList.remove('modal-open');
       $('#ballotView').classList.add('hidden');
       $('#doneView').classList.remove('hidden');
       selectedId = null;
     } catch (error) {
-      alert(error.message);
-    } finally {
-      button.disabled = false;
-      button.textContent = 'Kirim suara';
+      $('#voteError').textContent = error.message || 'Suara belum berhasil dikirim. Silakan coba kembali.';
+      $('#voteError').classList.remove('hidden');
+      button.disabled = !$('#agree').checked;
+      button.innerHTML = 'Coba kirim lagi <span>→</span>';
     }
   }
 
@@ -161,6 +172,16 @@
 
   async function init() {
     $('#loginForm').addEventListener('submit', login);
+    $('#agree').addEventListener('change', function () {
+      $('#sendVote').disabled = !this.checked;
+      if (this.checked) $('#sendVote').innerHTML = 'Kirim suara <span>→</span>';
+    });
+    $('#confirmModal').addEventListener('click', function (event) {
+      if (event.target === $('#confirmModal')) closeModal();
+    });
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && !$('#confirmModal').classList.contains('hidden')) closeModal();
+    });
     config = await api('/election');
     setElectionStatus();
     var session = await api('/me');

@@ -125,17 +125,28 @@
     <span>Periode 2026–2027 · Gunakan hak suara secara bijak</span>
   </footer>
 
-  <div id="confirmModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+  <div id="confirmModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmDescription">
     <div class="modal-box">
-      <span class="eyebrow">KONFIRMASI SURAT SUARA</span>
-      <h2 id="confirmTitle">Pastikan pilihan Anda.</h2>
-      <p id="confirmText"></p>
-      <div class="notice-box">Setelah suara dikirim, pilihan tidak dapat diubah. Pastikan pasangan calon yang dipilih sudah benar.</div>
-      <label class="confirm-check"><input type="checkbox" id="agree"><span>Saya yakin dengan pilihan saya.</span></label>
-      <div class="actions">
-        <button class="btn btn-outline" type="button" onclick="window.Evoting.closeModal()">Periksa kembali</button>
-        <button class="btn btn-gold" id="sendVote" type="button" onclick="window.Evoting.submitVote()">Kirim suara</button>
+      <button class="modal-close" type="button" aria-label="Tutup konfirmasi" onclick="window.Evoting.closeModal()">×</button>
+      <div class="modal-icon" aria-hidden="true">✓</div>
+      <span class="eyebrow modal-eyebrow">LANGKAH TERAKHIR</span>
+      <h2 id="confirmTitle">Konfirmasi pilihanmu</h2>
+      <p id="confirmDescription" class="modal-description">Pastikan pasangan calon yang kamu pilih sudah benar sebelum mengirim suara.</p>
+      <div class="confirm-selection">
+        <span class="selection-label">PILIHAN KAMU</span>
+        <div id="confirmText" class="selection-details"></div>
       </div>
+      <div class="modal-warning">
+        <span class="warning-mark">!</span>
+        <p>Suara yang sudah dikirim <b>tidak dapat diubah kembali</b>.</p>
+      </div>
+      <div id="voteError" class="modal-error hidden" role="alert"></div>
+      <label class="confirm-check"><input type="checkbox" id="agree"><span>Ya, saya yakin dengan pilihan ini.</span></label>
+      <div class="actions modal-actions">
+        <button class="btn btn-outline" type="button" onclick="window.Evoting.closeModal()">Ubah pilihan</button>
+        <button class="btn btn-gold" id="sendVote" type="button" disabled onclick="window.Evoting.submitVote()">Kirim suara <span>→</span></button>
+      </div>
+      <p class="modal-footnote">Suara baru akan direkam setelah kamu menekan tombol <b>Kirim suara</b>.</p>
     </div>
   </div>
 

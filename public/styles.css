@@ -74,3 +74,26 @@ body.modal-open{overflow:hidden}
 .admin-topbar-brand>div{min-width:0}
 .hero-emblem .hero-official-logo{position:relative;z-index:1;display:block;width:min(236px,84%);height:236px;aspect-ratio:1;object-fit:contain;border-radius:0;background:transparent;border:0;box-shadow:none;filter:drop-shadow(0 12px 26px rgba(0,0,0,.38)) drop-shadow(0 0 16px rgba(244,197,66,.16))}
 @media(max-width:700px){.admin-topbar-brand img{flex-basis:36px;width:36px;height:36px}.admin-topbar-brand h2{font-size:14px}.admin-topbar-brand p{font-size:9px}}
+
+/* Text-only identity: no crest or image logo is loaded in either portal. */
+.brand{gap:0;min-width:0}
+.brand img,.brand-logo,.hero-emblem,.admin-topbar-brand img{display:none!important}
+.site-header .brand{max-width:100%}
+.site-header .brand-title{font-size:15px;line-height:1.35}
+.hero{grid-template-columns:minmax(0,1fr);min-height:300px;padding:38px 12px 42px}
+.hero-copy{max-width:920px}
+.hero-copy p{max-width:720px}
+.admin-login .brand{padding:0 0 18px;margin-bottom:22px;border-bottom:1px solid rgba(255,255,255,.12)}
+.admin-sidebar .brand{padding:0 6px 18px;border-bottom:1px solid rgba(255,255,255,.1)}
+.admin-topbar-brand{display:flex;align-items:center;min-width:0}
+.admin-topbar-brand>div{min-width:0}
+@media(max-width:700px){
+  .site-header{align-items:center;flex-wrap:wrap}
+  .site-header .brand-title{font-size:12px}
+  .site-header .brand-sub{font-size:9px}
+  .hero{padding:24px 4px 28px;min-height:0}
+  .hero-copy h1{font-size:clamp(36px,10vw,46px)}
+  .admin-topbar{align-items:flex-start;flex-direction:column}
+  .admin-topbar .button-row{width:100%}
+  .admin-topbar .button-row .btn{flex:1}
+}

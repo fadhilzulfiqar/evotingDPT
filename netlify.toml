@@ -33,3 +33,18 @@
   for = "/index.html"
   [headers.values]
     Cache-Control = "no-store"
+
+[[headers]]
+  for = "/app.js"
+  [headers.values]
+    Cache-Control = "no-store"
+
+[[headers]]
+  for = "/admin.js"
+  [headers.values]
+    Cache-Control = "no-store"
+
+[[headers]]
+  for = "/styles.css"
+  [headers.values]
+    Cache-Control = "no-store"

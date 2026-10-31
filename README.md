@@ -1,37 +1,29 @@
-# EvotingDPT — Redesign Futuristik
+# EvotingDPT — Portal Pemilihan DPT 2026–2027
 
-URL GitHub Pages:
-- Pemilih: https://fadhilzulfiqar.github.io/evotingDPT/
-- Admin: https://fadhilzulfiqar.github.io/evotingDPT/admin.html
+## Versi aplikasi
 
-## File utama
-- index.html: portal pemilih
-- admin.html: portal admin
-- style.css: tema futuristik emas/gelap
-- app.js: logika demo lokal
-- assets/: logo DPT dan empat foto kandidat
+- **Netlify (aplikasi aktif):** Netlify membangun situs dari folder `public/` sesuai `netlify.toml`. Versi ini memakai Netlify Functions dan Netlify Blobs untuk autentikasi, akun pemilih, konfigurasi, dan penyimpanan suara terpusat.
+- **GitHub Pages (prototipe statis):** file di folder utama repository merupakan versi demo antarmuka berbasis browser. Data pada versi ini tidak tersinkron antarperangkat dan tidak boleh digunakan untuk pemilihan resmi.
 
-## Upload aset visual
-Ekstrak file `EvotingDPT_assets_upload.zip`, lalu unggah semua file di dalam folder `assets` ke folder `assets` pada repository GitHub.
+## Fitur versi Netlify
 
-Nama file harus persis:
-- logo-dpt.webp
-- paslon-01-ketua.webp
-- paslon-01-wakil.webp
-- paslon-02-ketua.webp
-- paslon-02-wakil.webp
+- Login pemilih dan administrator dengan sesi server.
+- Satu akun pemilih hanya dapat mengirim satu suara.
+- Dua pasangan calon, foto ketua/wakil, visi, misi, dan slogan dapat dikelola dari dashboard admin.
+- Data pemilih dapat ditambahkan satu per satu atau diimpor secara massal.
+- Rekap suara dan partisipasi tersimpan terpusat.
+- Reset pemilihan tetap tersedia di menu **Keamanan Admin**. Reset menghapus seluruh surat suara dan status hak pilih, tetapi **tidak menghapus daftar akun pemilih**.
+- Reset hanya dapat dilakukan setelah status pemilihan ditutup atau belum dimulai, dan memerlukan dua kali konfirmasi.
 
-Urutan foto mengikuti urutan unggahan: Ketua Paslon 01, Wakil Paslon 01, Ketua Paslon 02, Wakil Paslon 02.
+## Deployment Netlify
 
-## Batasan penting GitHub Pages
-GitHub Pages hanya menyediakan hosting statis. Versi ini adalah prototipe/latihan:
-- akun dan password diperiksa di browser;
-- data suara dan status pemilih disimpan di localStorage browser;
-- data dari HP pemilih tidak otomatis masuk ke dashboard admin;
-- satu akun bisa mencoba lagi dari perangkat/browser lain;
-- perubahan kandidat/foto/visi/misi dari admin hanya tersimpan pada browser admin.
+- Build publish directory: `public`
+- Functions directory: `netlify/functions`
+- Endpoint pemeriksaan: `/api/health`
+- Penyimpanan: Netlify Blobs
 
-Karena itu jangan gunakan versi ini untuk pemilihan resmi lintas perangkat. Pemilihan resmi memerlukan backend dan database terpusat dengan validasi server-side.
+Pastikan environment variable `ADMIN_BOOTSTRAP_PASSWORD` diatur pada Netlify dengan password yang kuat (minimal 8 karakter). Jangan menyimpan password administrator atau password pemilih dalam repository.
 
-## Keamanan
-Password awal dibagikan terpisah kepada pemilik akun. Jangan menyimpan password dalam repository publik. Segera ganti password admin pada perangkat admin jika memakai simulasi.
+## Catatan keamanan pemilihan
+
+Sebelum pemilihan resmi, lakukan uji coba menyeluruh: login lintas perangkat, satu akun satu suara, percobaan pengiriman ganda, perubahan status buka/tutup, rekap suara, dan prosedur reset. Arsipkan hasil sebelum reset. Pastikan akses dashboard admin hanya diberikan kepada panitia yang berwenang.

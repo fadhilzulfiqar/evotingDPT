@@ -136,13 +136,13 @@
   function renderVoters() {
     var html = heading('MANAJEMEN AKUN', 'Data pemilih', 'Tambah akun satu per satu atau impor daftar pemilih secara massal.');
     html += '<div class="dashboard-grid"><section class="panel"><span class="eyebrow">TAMBAH AKUN</span><h2>Tambah satu pemilih</h2>';
-    html += '<div class="form-grid"><label class="full">Nama lengkap<input id="newName" placeholder="Nama pemilih"></label><label>Username / NIT<input id="newUsername" placeholder="NIT atau username"></label><label>Password<input id="newPassword" type="text" placeholder="Password unik"></label></div>';
+    html += '<div class="form-grid"><label class="full">Nama lengkap<input id="newName" placeholder="Nama pemilih"></label><label>Username<input id="newUsername" placeholder="Username (8 karakter)"></label><label>Password<input id="newPassword" type="text" placeholder="Password (5 karakter)"></label></div>';
     html += '<div class="form-action" style="margin-top:14px"><button class="btn btn-gold" type="button" onclick="window.EvotingAdmin.addVoter()">Tambah pemilih</button></div></section>';
-    html += '<section class="panel"><span class="eyebrow">IMPOR MASSAL</span><h2>Tambah banyak pemilih</h2><p class="tiny muted">Format per baris: Nama | Username/NIT | Password</p>';
+    html += '<section class="panel"><span class="eyebrow">IMPOR MASSAL</span><h2>Tambah banyak pemilih</h2><p class="tiny muted">Format per baris: Nama | Username | Password</p>';
     html += '<label class="field"><span>Daftar pemilih</span><textarea id="bulkRows" rows="7" placeholder="Andi Saputra | 23123456 | DPT-A7K92&#10;Budi Santoso | 23123457 | DPT-B8L31"></textarea></label>';
     html += '<button class="btn btn-outline" type="button" onclick="window.EvotingAdmin.bulkImport()">Impor daftar pemilih</button></section></div>';
-    html += '<section class="panel"><div class="panel-head"><div><span class="eyebrow">DATABASE PEMILIH</span><h2>Daftar akun dan status partisipasi</h2></div><input id="voterSearch" class="search-input" placeholder="Cari nama atau NIT..." oninput="window.EvotingAdmin.filterVoters()"></div>';
-    html += '<div class="table-wrap"><table class="data-table"><thead><tr><th>NO.</th><th>NAMA</th><th>USERNAME / NIT</th><th>STATUS</th><th>WAKTU</th><th>AKSI</th></tr></thead><tbody id="voterRows"></tbody></table></div></section>';
+    html += '<section class="panel"><div class="panel-head"><div><span class="eyebrow">DATABASE PEMILIH</span><h2>Daftar akun dan status partisipasi</h2></div><input id="voterSearch" class="search-input" placeholder="Cari nama atau username..." oninput="window.EvotingAdmin.filterVoters()"></div>';
+    html += '<div class="table-wrap"><table class="data-table"><thead><tr><th>NO.</th><th>NAMA</th><th>USERNAME</th><th>STATUS</th><th>WAKTU</th><th>AKSI</th></tr></thead><tbody id="voterRows"></tbody></table></div></section>';
     $('#adminContent').innerHTML = html;
     renderVoterRows();
   }
@@ -297,7 +297,7 @@
       return { name: (parts[0] || '').trim(), username: (parts[1] || '').trim(), password: (parts[2] || '').trim() };
     }).filter(function (row) { return row.name && row.username && row.password; });
     if (!rows.length) {
-      message('adminFeedback', 'Tidak ada baris valid. Gunakan format Nama | Username/NIT | Password.', 'error');
+      message('adminFeedback', 'Tidak ada baris valid. Gunakan format Nama | Username | Password.', 'error');
       return;
     }
     try {

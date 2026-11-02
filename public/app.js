@@ -3,6 +3,7 @@
   var API = '/api';
   var config = null;
   var selectedId = null;
+  var submittingVote = false;
   var $ = function (selector) { return document.querySelector(selector); };
 
   function esc(value) {
@@ -16,7 +17,11 @@
     opt.headers = Object.assign({ 'Content-Type': 'application/json' }, opt.headers || {});
     var response = await fetch(API + path, opt);
     var data = await response.json().catch(function () { return {}; });
-    if (!response.ok) throw new Error(data.error || 'Permintaan tidak dapat diproses.');
+    if (!response.ok) {
+      var error = new Error(data.error || 'Permintaan tidak dapat diproses.');
+      error.status = response.status;
+      throw error;
+    }
     return data;
   }
 
@@ -118,6 +123,7 @@
   }
 
   function confirmVote(id) {
+    if (submittingVote) return;
     selectedId = String(id);
     var candidate = (config.candidates || []).find(function (item) { return String(item.id) === selectedId; });
     if (!candidate) return;
@@ -128,6 +134,8 @@
       '<span><small>CALON WAKIL KETUA</small><b>' + esc(candidate.wakil || '-') + '</b></span></div>';
 
     $('#agree').checked = false;
+    $('#agree').disabled = false;
+    $('#confirmModal').classList.remove('is-submitting');
     $('#sendVote').disabled = true;
     $('#sendVote').innerHTML = 'Kirim suara <span>→</span>';
     $('#voteError').textContent = '';
@@ -138,30 +146,74 @@
   }
 
   function closeModal() {
+    if (submittingVote) return;
     $('#confirmModal').classList.add('hidden');
     document.body.classList.remove('modal-open');
     selectedId = null;
   }
 
+  function showVoteSuccess() {
+    $('#confirmModal').classList.add('hidden');
+    $('#confirmModal').classList.remove('is-submitting');
+    document.body.classList.remove('modal-open');
+    $('#ballotView').classList.add('hidden');
+    $('#doneView').classList.remove('hidden');
+    selectedId = null;
+  }
+
   async function submitVote() {
-    if (!selectedId || !$('#agree').checked) return;
+    if (!selectedId || !$('#agree').checked || submittingVote) return;
+    submittingVote = true;
     var button = $('#sendVote');
+    var modal = $('#confirmModal');
+    var payload = JSON.stringify({ candidateId: selectedId });
     button.disabled = true;
-    button.textContent = 'Mengirim suara...';
+    button.setAttribute('aria-busy', 'true');
+    button.innerHTML = '<span class="button-spinner" aria-hidden="true"></span> Mengirim suara...';
+    $('#agree').disabled = true;
+    modal.classList.add('is-submitting');
     $('#voteError').textContent = '';
     $('#voteError').classList.add('hidden');
+
     try {
-      await api('/vote', { method: 'POST', body: JSON.stringify({ candidateId: selectedId }) });
-      $('#confirmModal').classList.add('hidden');
-      document.body.classList.remove('modal-open');
-      $('#ballotView').classList.add('hidden');
-      $('#doneView').classList.remove('hidden');
-      selectedId = null;
+      // Small random staggering smooths a simultaneous burst from many devices.
+      await new Promise(function (resolve) {
+        window.setTimeout(resolve, Math.floor(Math.random() * 1800));
+      });
+      try {
+        await api('/vote', { method: 'POST', body: payload });
+      } catch (firstError) {
+        // Retry once only for transient throttling/server errors. The API's
+        // per-voter lock makes a retry for the same account safe to reconcile.
+        if (firstError.status !== 429 && !(firstError.status >= 500)) throw firstError;
+        await new Promise(function (resolve) {
+          window.setTimeout(resolve, 1000 + Math.floor(Math.random() * 1200));
+        });
+        await api('/vote', { method: 'POST', body: payload });
+      }
+      showVoteSuccess();
     } catch (error) {
+      // If the server stored the vote but the response was interrupted,
+      // confirm the account state before asking the voter to retry.
+      var sessionState = null;
+      try { sessionState = await api('/me'); } catch (ignored) {}
+      if (sessionState && sessionState.loggedIn && sessionState.user && sessionState.user.hasVoted) {
+        showVoteSuccess();
+        return;
+      }
       $('#voteError').textContent = error.message || 'Suara belum berhasil dikirim. Silakan coba kembali.';
       $('#voteError').classList.remove('hidden');
-      button.disabled = !$('#agree').checked;
-      button.innerHTML = 'Coba kirim lagi <span>→</span>';
+    } finally {
+      submittingVote = false;
+      $('#agree').disabled = false;
+      modal.classList.remove('is-submitting');
+      button.removeAttribute('aria-busy');
+      if (!modal.classList.contains('hidden')) {
+        button.disabled = !$('#agree').checked;
+        button.innerHTML = 'Coba kirim lagi <span>→</span>';
+      } else {
+        button.disabled = true;
+      }
     }
   }
 
@@ -180,7 +232,7 @@
       if (event.target === $('#confirmModal')) closeModal();
     });
     document.addEventListener('keydown', function (event) {
-      if (event.key === 'Escape' && !$('#confirmModal').classList.contains('hidden')) closeModal();
+      if (event.key === 'Escape' && !submittingVote && !$('#confirmModal').classList.contains('hidden')) closeModal();
     });
     config = await api('/election');
     setElectionStatus();

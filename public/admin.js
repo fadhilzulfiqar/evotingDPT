@@ -141,8 +141,8 @@
     html += '<section class="panel"><span class="eyebrow">IMPOR MASSAL</span><h2>Tambah banyak pemilih</h2><p class="tiny muted">Format per baris: Nama | Username | Password</p>';
     html += '<label class="field"><span>Daftar pemilih</span><textarea id="bulkRows" rows="7" placeholder="Andi Saputra | 23123456 | DPT-A7K92&#10;Budi Santoso | 23123457 | DPT-B8L31"></textarea></label>';
     html += '<button class="btn btn-outline" type="button" onclick="window.EvotingAdmin.bulkImport()">Impor daftar pemilih</button></section></div>';
-    html += '<section class="panel"><div class="panel-head"><div><span class="eyebrow">DATABASE PEMILIH</span><h2>Daftar akun dan status partisipasi</h2></div><input id="voterSearch" class="search-input" placeholder="Cari nama atau username..." oninput="window.EvotingAdmin.filterVoters()"></div>';
-    html += '<div class="table-wrap"><table class="data-table"><thead><tr><th>NO.</th><th>NAMA</th><th>USERNAME</th><th>STATUS</th><th>WAKTU</th><th>AKSI</th></tr></thead><tbody id="voterRows"></tbody></table></div></section>';
+    html += '<section class="panel"><div class="panel-head"><div><span class="eyebrow">DATABASE PEMILIH</span><h2>Daftar akun pemilih</h2></div><input id="voterSearch" class="search-input" placeholder="Cari nama atau username..." oninput="window.EvotingAdmin.filterVoters()"></div>';
+    html += '<details class="audit-details"><summary><span>Audit partisipasi khusus admin</span><small>Menampilkan status dan waktu partisipasi saja. Pilihan setiap pemilih tetap rahasia.</small></summary><div class="table-wrap"><table class="data-table"><thead><tr><th>NO.</th><th>NAMA</th><th>USERNAME</th><th>STATUS</th><th>WAKTU</th><th>AKSI</th></tr></thead><tbody id="voterRows"></tbody></table></div></details></section>';
     $('#adminContent').innerHTML = html;
     renderVoterRows();
   }

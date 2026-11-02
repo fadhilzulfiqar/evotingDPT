@@ -1,0 +1,49 @@
+name: E-Voting DPT staging load test
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "URL Netlify staging (wajib; jangan gunakan URL produksi)"
+        required: true
+        type: string
+      vus:
+        description: "Jumlah akun virtual (maksimal 100)"
+        required: true
+        default: "100"
+        type: string
+
+jobs:
+  load-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      BASE_URL: ${{ inputs.base_url }}
+      SOURCE_URL: https://evotingdpt.netlify.app
+      VUS: ${{ inputs.vus }}
+      ADMIN_BOOTSTRAP_PASSWORD: ${{ secrets.STAGING_ADMIN_BOOTSTRAP_PASSWORD }}
+    steps:
+      - name: Checkout staging branch
+        uses: actions/checkout@v4
+
+      - name: Set up k6
+        uses: grafana/setup-k6-action@v1
+
+      - name: Validate staging credentials
+        run: |
+          if [ -z "$ADMIN_BOOTSTRAP_PASSWORD" ]; then
+            echo "Missing repository secret STAGING_ADMIN_BOOTSTRAP_PASSWORD"
+            exit 1
+          fi
+
+      - name: Run simultaneous login and voting test
+        run: k6 run tests/load/k6-vote.js
+
+      - name: Upload load-test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evotingdpt-load-test-report
+          path: load-test-summary.json
+          if-no-files-found: ignore
+          retention-days: 14

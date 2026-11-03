@@ -66,7 +66,7 @@ Setelah rilis tahap 1 dipromosikan ke Production Context (halaman utama lama mas
 1. Buka dashboard lama `/admin` dan tutup pemungutan suara trial V1 (status CLOSED).
 2. Buka `/admin-v2` pada domain production dan masuk menggunakan akun admin yang sama.
 3. Buka menu Keamanan & Arsip.
-4. Jalankan **Buat backup data trial lama**. Backend menolak backup jika status V1 masih OPEN atau snapshot berubah selama penyalinan.
+4. Jalankan **Buat backup data trial lama**. Backend menolak backup jika status V1 masih OPEN atau snapshot berubah selama penyalinan. Saat V2 akan dibuka, backend juga memeriksa ulang apakah konfigurasi dan record V1 masih sama dengan snapshot; backup kedaluwarsa tidak dapat digunakan.
 5. Pastikan status menampilkan backup ID, jumlah voter-lock dan ballot yang disalin, jumlah akun lama yang dipertahankan, snapshot verified, dan archive read-back verified.
 6. Jangan lanjut cutover jika manifest belum berstatus terverifikasi.
 

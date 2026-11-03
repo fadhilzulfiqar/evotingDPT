@@ -45,6 +45,10 @@ if (!importResponse.ok || importResult.added !== count) {
   throw new Error('Could not create all load-test accounts: ' + JSON.stringify(importResult));
 }
 
+const electionResponse = await request('/api/v2/election');
+const electionConfig = await electionResponse.json();
+if (!electionResponse.ok || electionConfig.status !== 'open') throw new Error('Staging election must be open before load testing.');
+
 const loginStarted = performance.now();
 const sessions = await Promise.all(rows.map(async row => {
   const response = await request('/api/v2/login', {
@@ -65,7 +69,8 @@ const submissions = await Promise.allSettled(sessions.map(async (session, index)
     body: JSON.stringify({
       chairCandidateId: index % 2 ? 'K01' : 'K02',
       viceCandidateId: index % 2 ? 'W02' : 'W01',
-      idempotencyKey: crypto.randomUUID()
+      idempotencyKey: crypto.randomUUID(),
+      configVersion: Number(electionConfig.configVersion || 1)
     })
   });
   const body = await response.json().catch(() => ({}));

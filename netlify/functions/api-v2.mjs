@@ -190,6 +190,14 @@ async function ensureSchema() {
         'INSERT INTO evoting_v2_election_control (election_id, status) VALUES (\'dpt-2026-2027-independent-v2\', \'scheduled\') ON CONFLICT (election_id) DO NOTHING;';
       await pool.query(ddl);
       await pool.query('ALTER TABLE evoting_v2_election_control ADD COLUMN IF NOT EXISTS config_version INTEGER NOT NULL DEFAULT 1');
+      const ballotConstraints = [
+        "ALTER TABLE evoting_v2_ballots ADD CONSTRAINT evoting_v2_ballots_chair_check CHECK (chair_candidate_id IN ('K01','K02'))",
+        "ALTER TABLE evoting_v2_ballots ADD CONSTRAINT evoting_v2_ballots_vice_check CHECK (vice_candidate_id IN ('W01','W02'))"
+      ];
+      for (const statement of ballotConstraints) {
+        try { await pool.query(statement); }
+        catch (error) { if (error.code !== '42710') throw error; }
+      }
       return true;
     })().catch(error => {
       schemaPromise = null;
@@ -314,12 +322,16 @@ function normalizeCandidateGroup(items, prefix) {
   if (!Array.isArray(items) || items.length !== 2) {
     throw new Error('Setiap jabatan harus memiliki tepat dua calon.');
   }
-  return items.map((item, index) => ({
-    id: prefix + '0' + (index + 1),
-    number: '0' + (index + 1),
-    name: String(item?.name || '').trim().slice(0, 120),
-    photo: String(item?.photo || '')
-  }));
+  return items.map((item, index) => {
+    const photo = String(item?.photo || '');
+    if (photo.length > 1_250_000) throw new Error('Ukuran foto terlalu besar. Maksimal 900 KB per foto.');
+    return {
+      id: prefix + '0' + (index + 1),
+      number: '0' + (index + 1),
+      name: String(item?.name || '').trim().slice(0, 120),
+      photo
+    };
+  });
 }
 
 function isCompleteCandidates(candidates) {
@@ -908,20 +920,37 @@ async function handleEvent(event) {
       return json(200, { ok: true });
     }
 
+    if (method === 'GET' && route === '/admin/legacy-archive/status') {
+      const manifest = await getLatestLegacyArchiveManifest();
+      return json(200, {
+        available: Boolean(manifest),
+        manifest: manifest ? {
+          backupId: manifest.backupId,
+          createdAt: manifest.createdAt,
+          voterLockRecordsCopied: manifest.voterLockRecordsCopied,
+          ballotRecordsCopied: manifest.ballotRecordsCopied,
+          legacyUserRecordsRetained: manifest.legacyUserRecordsRetained,
+          snapshotVerified: manifest.snapshotVerified,
+          archiveReadbackVerified: manifest.archiveReadbackVerified
+        } : null
+      });
+    }
+
     if (method === 'POST' && route === '/admin/legacy-archive') {
       if (process.env.CONTEXT !== 'production') return json(409, { error: 'Arsip data produksi hanya dapat dijalankan pada deploy production setelah pemeriksaan admin.' });
       let manifest;
       try {
         manifest = await archiveLegacyData();
       } catch (error) {
-        if (error.code === 'LEGACY_ELECTION_OPEN' || error.code === 'LEGACY_CHANGED_DURING_BACKUP') {
+        if (String(error.code || '').startsWith('LEGACY_')) {
           return json(409, { error: error.message });
         }
         throw error;
       }
       if (pool) await writeAudit('legacy_trial.archived', manifest.backupId, {
         voterLockRecordsCopied: manifest.voterLockRecordsCopied,
-        ballotRecordsCopied: manifest.ballotRecordsCopied
+        ballotRecordsCopied: manifest.ballotRecordsCopied,
+        archiveReadbackVerified: manifest.archiveReadbackVerified
       });
       return json(200, { ok: true, manifest });
     }

@@ -87,9 +87,9 @@
         : user.hasVoted ? '<span class="status-pill done">SUDAH MEMILIH</span>'
         : '<span class="status-pill pending">BELUM MEMILIH</span>';
       const actions = user.active
-        ? '<button class="small-button" type="button" onclick="window.EvotingAdmin.editUser(\\'' + esc(user.id) + '\\')">Edit</button> ' +
-          (user.hasVoted === null ? '<span class="inline-note">Menunggu database</span>' : user.hasVoted ? '<span class="inline-note">Hak suara digunakan</span>' : '<button class="small-button warn" type="button" onclick="window.EvotingAdmin.deactivateUser(\\'' + esc(user.id) + '\\')">Nonaktifkan</button>')
-        : '<button class="small-button" type="button" onclick="window.EvotingAdmin.activateUser(\\'' + esc(user.id) + '\\')">Aktifkan kembali</button>';
+        ? '<button class="small-button" type="button" data-action="edit" data-id="' + esc(user.id) + '">Edit</button> ' +
+          (user.hasVoted === null ? '<span class="inline-note">Menunggu database</span>' : user.hasVoted ? '<span class="inline-note">Hak suara digunakan</span>' : '<button class="small-button warn" type="button" data-action="deactivate" data-id="' + esc(user.id) + '">Nonaktifkan</button>')
+        : '<button class="small-button" type="button" data-action="activate" data-id="' + esc(user.id) + '">Aktifkan kembali</button>';
       html += '<tr><td>' + (index + 1) + '</td><td>' + esc(user.name) + '</td><td>' + esc(user.username) + '</td><td>' + state + '</td><td>' + (user.votedAt ? esc(new Date(user.votedAt).toLocaleString('id-ID')) : '—') + '</td><td>' + actions + '</td></tr>';
     });
     $('#voterRows').innerHTML = html || '<tr><td colspan="6">Tidak ada data pemilih.</td></tr>';
@@ -101,7 +101,16 @@
     html += '<section class="admin-panel"><div class="eyebrow">IMPOR MASSAL</div><h2>Daftar pemilih</h2><p>Format per baris: Nama | Username | Password</p><textarea id="bulkRows" class="admin-input" rows="6" placeholder="Nama Pemilih | 23123456 | DPT-A7K92"></textarea><div class="admin-actions"><button class="small-button" type="button" onclick="window.EvotingAdmin.bulkImport()">Impor daftar</button></div></section></div>';
     html += '<section class="admin-panel"><div class="panel-heading"><div><div class="eyebrow">STATUS PARTISIPASI</div><h2>Daftar akun dan status pemilihan</h2></div><input id="voterSearch" class="search-box" placeholder="Cari nama atau username..." oninput="window.EvotingAdmin.filterVoters()"></div>';
     html += '<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>NO.</th><th>NAMA</th><th>USERNAME</th><th>STATUS</th><th>WAKTU SUARA</th><th>AKSI</th></tr></thead><tbody id="voterRows"></tbody></table></div></section>';
-    $('#adminContent').innerHTML = html; renderVoterRows();
+    $('#adminContent').innerHTML = html;
+    $('#voterRows').addEventListener('click', event => {
+      const button = event.target.closest('[data-action]');
+      if (!button) return;
+      const id = button.dataset.id;
+      if (button.dataset.action === 'edit') editUser(id);
+      else if (button.dataset.action === 'deactivate') deactivateUser(id);
+      else if (button.dataset.action === 'activate') activateUser(id);
+    });
+    renderVoterRows();
   }
 
   function renderResultGroup(role, candidates, counts) {

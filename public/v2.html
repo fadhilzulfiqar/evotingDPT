@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#09111f">
+  <meta name="description" content="Portal pemilihan Ketua dan Wakil Ketua DPT Politeknik Agraria STPN.">
+  <title>E-Voting DPT | Pemilihan Independen</title>
+  <link rel="stylesheet" href="/v2.css">
+</head>
+<body>
+  <header class="v2-header">
+    <a class="v2-brand" href="/v2">
+      <span class="brand-mark">DPT</span>
+      <span><b>Dewan Perwakilan Taruna</b><small>Politeknik Agraria STPN · 2026–2027</small></span>
+    </a>
+    <div class="header-actions">
+      <span class="secure-label"><i></i> PORTAL PEMILIHAN</span>
+      <a class="text-link" href="/admin-v2">Portal Admin ↗</a>
+    </div>
+  </header>
+
+  <main class="v2-main">
+    <section class="v2-hero">
+      <div class="hero-overline">PEMILIHAN DPT · PERIODE 2026–2027</div>
+      <h1>Satu suara.<br><em>Dua keputusan.</em></h1>
+      <p>Pilih satu calon Ketua dan satu calon Wakil Ketua secara terpisah. Pastikan pilihan Anda benar sebelum mengirim surat suara.</p>
+      <div class="hero-points">
+        <span><b>01</b> Pilih Ketua</span>
+        <span><b>02</b> Pilih Wakil</span>
+        <span><b>03</b> Konfirmasi sekali</span>
+      </div>
+    </section>
+
+    <div id="systemNotice" class="notice" role="status">Menghubungkan ke sistem pemilihan...</div>
+
+    <section id="loginView" class="login-layout">
+      <form id="loginForm" class="panel login-panel">
+        <div class="eyebrow">AUTENTIKASI PEMILIH</div>
+        <h2>Masuk ke ruang pemilihan</h2>
+        <p>Gunakan username dan password yang diberikan oleh panitia.</p>
+        <div id="loginFeedback" class="feedback" aria-live="polite"></div>
+        <label>Username
+          <input id="voterUsername" autocomplete="username" required placeholder="Masukkan username">
+        </label>
+        <label>Password
+          <input id="voterPassword" type="password" autocomplete="current-password" required placeholder="Masukkan password">
+        </label>
+        <button id="loginButton" class="primary-button" type="submit">Masuk ke pemilihan <span>→</span></button>
+        <small class="muted">Jika akun tidak dapat digunakan, hubungi panitia DPT.</small>
+      </form>
+      <aside class="panel login-aside">
+        <div class="eyebrow">PETUNJUK</div>
+        <h3>Gunakan hak pilih secara bertanggung jawab.</h3>
+        <ul>
+          <li>Pastikan akun yang digunakan adalah milik Anda sendiri.</li>
+          <li>Pilih tepat satu calon untuk masing-masing jabatan.</li>
+          <li>Periksa kembali ringkasan sebelum mengirim.</li>
+          <li>Setelah terkirim, suara tidak dapat diubah.</li>
+        </ul>
+      </aside>
+    </section>
+
+    <section id="ballotView" class="hidden">
+      <div class="voter-bar panel">
+        <div><span class="eyebrow">PEMILIH TERDAFTAR</span><h2>Halo, <span id="welcomeName">Pemilih</span></h2><small id="welcomeUsername"></small></div>
+        <button id="logoutButton" class="secondary-button" type="button">Keluar</button>
+      </div>
+
+      <div class="ballot-heading">
+        <span class="eyebrow">LEMBAR SUARA ELEKTRONIK</span>
+        <h2 id="electionHeading">Pemilihan Ketua dan Wakil Ketua DPT</h2>
+        <p id="electionSubheading">Pilih satu kandidat pada setiap bagian.</p>
+      </div>
+      <div id="voterState" class="state-message" aria-live="polite"></div>
+      <div id="voterFeedback" class="feedback" aria-live="polite"></div>
+
+      <section class="role-section">
+        <div class="role-title"><span class="role-step">01</span><div><span class="eyebrow">PEMILIHAN PERTAMA</span><h3>Calon Ketua DPT</h3><p>Pilih satu orang calon Ketua.</p></div></div>
+        <div id="chairGrid" class="candidate-grid"></div>
+      </section>
+
+      <section class="role-section">
+        <div class="role-title"><span class="role-step">02</span><div><span class="eyebrow">PEMILIHAN KEDUA</span><h3>Calon Wakil Ketua DPT</h3><p>Pilih satu orang calon Wakil Ketua.</p></div></div>
+        <div id="viceGrid" class="candidate-grid"></div>
+      </section>
+
+      <div class="submit-panel panel">
+        <div><b>Periksa kedua pilihan Anda</b><small>Ketua dan Wakil wajib dipilih sebelum surat suara dikirim.</small></div>
+        <button id="reviewButton" class="primary-button" type="button" disabled>Periksa pilihan <span>→</span></button>
+      </div>
+    </section>
+
+    <section id="doneView" class="panel done-panel hidden" aria-live="polite">
+      <div class="done-icon">✓</div>
+      <span class="eyebrow">PARTISIPASI TERCATAT</span>
+      <h2>Terima kasih telah menggunakan hak pilih.</h2>
+      <p>Sistem telah menerima satu pilihan Ketua dan satu pilihan Wakil dari akun Anda.</p>
+      <div class="notice">Panitia dapat melihat status partisipasi dan rekapitulasi setiap jabatan, tetapi tidak dapat melihat pilihan yang Anda kirimkan secara individual.</div>
+      <button id="doneLogoutButton" class="secondary-button" type="button">Selesai</button>
+    </section>
+  </main>
+
+  <footer class="v2-footer">
+    <b>EVOTING DPT</b> · POLITEKNIK AGRARIA STPN<br>
+    <span>Periode 2026–2027 · Pemilihan Ketua dan Wakil Ketua secara terpisah</span>
+  </footer>
+
+  <div id="confirmModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+    <div class="modal-card">
+      <button id="closeModal" class="modal-close" type="button" aria-label="Tutup">×</button>
+      <div class="eyebrow">KONFIRMASI AKHIR</div>
+      <h2 id="confirmTitle">Periksa pilihan Anda</h2>
+      <p class="muted">Pastikan nama calon sudah sesuai. Suara tidak dapat diubah setelah dikirim.</p>
+      <div id="confirmSummary" class="confirm-summary"></div>
+      <label class="confirm-agree"><input id="agree" type="checkbox"> Saya yakin dengan kedua pilihan ini.</label>
+      <div id="voteError" class="feedback" role="alert"></div>
+      <div class="modal-actions">
+        <button id="changeSelection" class="secondary-button" type="button">Kembali</button>
+        <button id="sendVote" class="primary-button" type="button" disabled>Kirim suara <span>→</span></button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/v2.js" defer></script>
+</body>
+</html>

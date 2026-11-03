@@ -47,10 +47,10 @@ Script membuat akun uji baru, login bersamaan, lalu mengirim 100 surat suara sec
 
 Setelah rilis tahap 1 dipromosikan ke production (halaman utama lama masih tetap aktif):
 
-1. Buka `/admin-v2` pada domain production.
-2. Masuk menggunakan akun admin yang sama.
+1. Buka dashboard lama `/admin` dan tutup pemungutan suara trial (status CLOSED).
+2. Buka `/admin-v2` pada domain production dan masuk menggunakan akun admin yang sama.
 3. Buka menu Keamanan & Arsip.
-4. Jalankan **Buat backup data trial lama**.
+4. Jalankan **Buat backup data trial lama**. Backend menolak backup jika status lama masih OPEN atau snapshot berubah selama penyalinan.
 5. Pastikan notifikasi menampilkan backup ID dan jumlah record voter-lock serta ballot yang disalin.
 6. Verifikasi backup ID dan jumlah record sebelum menyetujui rilis tahap 2 (cutover).
 

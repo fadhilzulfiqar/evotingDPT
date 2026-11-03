@@ -437,10 +437,16 @@ async function archiveLegacyData() {
   const archiveStore = stores.legacyArchive();
   const backupId = 'legacy-trial-' + new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14) + '-' + crypto.randomBytes(3).toString('hex');
   const oldConfig = await configStore.get('main', { type: 'json', consistency: 'strong' });
+  if (oldConfig?.status === 'open') {
+    const error = new Error('Tutup pemungutan suara trial lama melalui dashboard admin lama sebelum membuat backup.');
+    error.code = 'LEGACY_ELECTION_OPEN';
+    throw error;
+  }
+
   const voterKeys = (await votesStore.list({ prefix: 'voter/' })).blobs || [];
   const ballotKeys = (await votesStore.list({ prefix: 'ballot/' })).blobs || [];
-  let copiedVoterLocks = 0;
-  let copiedBallots = 0;
+  const voterSnapshot = [];
+  const ballotSnapshot = [];
 
   if (oldConfig) await archiveStore.setJSON(backupId + '/legacy-config', oldConfig, { onlyIfNew: true });
 
@@ -448,15 +454,43 @@ async function archiveLegacyData() {
     const value = await votesStore.get(entry.key, { type: 'json', consistency: 'strong' });
     if (value) {
       await archiveStore.setJSON(backupId + '/votes/' + entry.key, value, { onlyIfNew: true });
-      copiedVoterLocks += 1;
+      voterSnapshot.push({ key: entry.key, value });
     }
   }
   for (const entry of ballotKeys) {
     const value = await votesStore.get(entry.key, { type: 'json', consistency: 'strong' });
     if (value) {
       await archiveStore.setJSON(backupId + '/votes/' + entry.key, value, { onlyIfNew: true });
-      copiedBallots += 1;
+      ballotSnapshot.push({ key: entry.key, value });
     }
+  }
+
+  const [configAfter, voterKeysAfter, ballotKeysAfter] = await Promise.all([
+    configStore.get('main', { type: 'json', consistency: 'strong' }),
+    votesStore.list({ prefix: 'voter/' }),
+    votesStore.list({ prefix: 'ballot/' })
+  ]);
+  const keySignature = entries => (entries || []).map(entry => entry.key).sort().join('|');
+  let stable = JSON.stringify(configAfter) === JSON.stringify(oldConfig)
+    && keySignature(voterKeysAfter.blobs) === keySignature(voterKeys)
+    && keySignature(ballotKeysAfter.blobs) === keySignature(ballotKeys);
+
+  if (stable) {
+    for (const item of voterSnapshot) {
+      const current = await votesStore.get(item.key, { type: 'json', consistency: 'strong' });
+      if (JSON.stringify(current) !== JSON.stringify(item.value)) { stable = false; break; }
+    }
+  }
+  if (stable) {
+    for (const item of ballotSnapshot) {
+      const current = await votesStore.get(item.key, { type: 'json', consistency: 'strong' });
+      if (JSON.stringify(current) !== JSON.stringify(item.value)) { stable = false; break; }
+    }
+  }
+  if (!stable) {
+    const error = new Error('Data trial berubah ketika backup berlangsung. Tutup sistem trial, tunggu transaksi selesai, lalu ulangi backup.');
+    error.code = 'LEGACY_CHANGED_DURING_BACKUP';
+    throw error;
   }
 
   const manifest = {
@@ -464,8 +498,9 @@ async function archiveLegacyData() {
     type: 'legacy-trial-preservation',
     createdAt: new Date().toISOString(),
     legacyConfigCopied: Boolean(oldConfig),
-    voterLockRecordsCopied: copiedVoterLocks,
-    ballotRecordsCopied: copiedBallots,
+    voterLockRecordsCopied: voterSnapshot.length,
+    ballotRecordsCopied: ballotSnapshot.length,
+    snapshotVerified: true,
     originalStoresRetained: true,
     voterAccountsRetainedInOriginalStore: true,
     note: 'Arsip privat untuk preservasi. Record voter-lock lama dapat memuat hubungan internal antara akun dan pilihan. Jangan tampilkan isi arsip pada dashboard atau ekspor publik.'
@@ -783,7 +818,15 @@ async function handleEvent(event) {
 
     if (method === 'POST' && route === '/admin/legacy-archive') {
       if (process.env.CONTEXT !== 'production') return json(409, { error: 'Arsip data produksi hanya dapat dijalankan pada deploy production setelah pemeriksaan admin.' });
-      const manifest = await archiveLegacyData();
+      let manifest;
+      try {
+        manifest = await archiveLegacyData();
+      } catch (error) {
+        if (error.code === 'LEGACY_ELECTION_OPEN' || error.code === 'LEGACY_CHANGED_DURING_BACKUP') {
+          return json(409, { error: error.message });
+        }
+        throw error;
+      }
       if (pool) await writeAudit('legacy_trial.archived', manifest.backupId, {
         voterLockRecordsCopied: manifest.voterLockRecordsCopied,
         ballotRecordsCopied: manifest.ballotRecordsCopied

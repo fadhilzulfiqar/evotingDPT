@@ -166,7 +166,7 @@ async function ensureSchema() {
     schemaPromise = (async () => {
       const ddl =
         'CREATE TABLE IF NOT EXISTS evoting_v2_election_control (' +
-        'election_id TEXT PRIMARY KEY, status TEXT NOT NULL CHECK (status IN (\'scheduled\',\'open\',\'closed\')), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());\n' +
+        'election_id TEXT PRIMARY KEY, status TEXT NOT NULL CHECK (status IN (\'scheduled\',\'open\',\'closed\')), config_version INTEGER NOT NULL DEFAULT 1, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());\n' +
         'CREATE TABLE IF NOT EXISTS evoting_v2_eligibility (' +
         'election_id TEXT NOT NULL, voter_id TEXT NOT NULL, active BOOLEAN NOT NULL DEFAULT TRUE, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (election_id, voter_id));\n' +
         'CREATE TABLE IF NOT EXISTS evoting_v2_participation (' +
@@ -191,20 +191,24 @@ async function ensureSchema() {
   return schemaPromise;
 }
 
-async function getControlStatus() {
+async function getControl() {
   await ensureSchema();
   const result = await pool.query(
-    'SELECT status FROM evoting_v2_election_control WHERE election_id = $1',
+    'SELECT status, config_version FROM evoting_v2_election_control WHERE election_id = $1',
     [ELECTION_ID]
   );
-  return result.rows[0]?.status || 'scheduled';
+  return result.rows[0] || { status: 'scheduled', config_version: 1 };
 }
 
-async function setControlStatus(status, client = pool) {
+async function getControlStatus() {
+  return (await getControl()).status;
+}
+
+async function setControlStatus(status, client = pool, configVersion = 1) {
   await client.query(
-    'INSERT INTO evoting_v2_election_control (election_id, status, updated_at) VALUES ($1, $2, NOW()) ' +
-    'ON CONFLICT (election_id) DO UPDATE SET status = EXCLUDED.status, updated_at = NOW()',
-    [ELECTION_ID, status]
+    'INSERT INTO evoting_v2_election_control (election_id, status, config_version, updated_at) VALUES ($1, $2, $3, NOW()) ' +
+    'ON CONFLICT (election_id) DO UPDATE SET status = EXCLUDED.status, config_version = EXCLUDED.config_version, updated_at = NOW()',
+    [ELECTION_ID, status, configVersion]
   );
 }
 
@@ -347,7 +351,7 @@ async function getAdminStats() {
         hasVoted: null,
         votedAt: null
       })).sort((a, b) => a.name.localeCompare(b.name, 'id')),
-      config,
+      config: { ...config, status: 'scheduled', configVersion: Number(config.configVersion || 1) },
       database: 'not-configured'
     };
   }
@@ -370,7 +374,7 @@ async function getAdminStats() {
       'FROM evoting_v2_ballots WHERE election_id=$1 GROUP BY vice_candidate_id',
       [ELECTION_ID]
     ),
-    pool.query('SELECT status FROM evoting_v2_election_control WHERE election_id=$1', [ELECTION_ID])
+    pool.query('SELECT status,config_version FROM evoting_v2_election_control WHERE election_id=$1', [ELECTION_ID])
   ]);
 
   const eligibility = new Map(eligibilityResult.rows.map(row => [row.voter_id, row.active]));
@@ -409,7 +413,7 @@ async function getAdminStats() {
     viceCounts,
     totalBallots,
     users: safeUsers,
-    config: { ...config, status: controlResult.rows[0]?.status || 'scheduled' },
+    config: { ...config, status: controlResult.rows[0]?.status || 'scheduled', configVersion: Number(controlResult.rows[0]?.config_version || 1) },
     database: 'postgresql'
   };
 }
@@ -474,8 +478,8 @@ async function handleEvent(event) {
 
     if (method === 'GET' && route === '/election') {
       const config = await getV2Config();
-      const status = pool ? await getControlStatus() : 'scheduled';
-      return json(200, { ...config, status, setupRequired: !pool });
+      const control = pool ? await getControl() : { status: 'scheduled', config_version: Number(config.configVersion || 1) };
+      return json(200, { ...config, status: control.status, configVersion: Number(control.config_version || 1), setupRequired: !pool });
     }
 
     if (method === 'POST' && route === '/login') {
@@ -525,6 +529,8 @@ async function handleEvent(event) {
       const chairCandidateId = String(body.chairCandidateId || '');
       const viceCandidateId = String(body.viceCandidateId || '');
       const idempotencyKey = String(body.idempotencyKey || '');
+      const submittedConfigVersion = Number(body.configVersion);
+      if (!Number.isInteger(submittedConfigVersion) || submittedConfigVersion < 1) return json(400, { error: 'Versi daftar calon tidak valid. Muat ulang halaman.' });
       if (!UUID_RE.test(idempotencyKey)) return json(400, { error: 'Kunci transaksi tidak valid. Muat ulang halaman.' });
 
       const config = await getV2Config();
@@ -537,12 +543,16 @@ async function handleEvent(event) {
       try {
         await client.query('BEGIN');
         const control = await client.query(
-          'SELECT status FROM evoting_v2_election_control WHERE election_id=$1 FOR SHARE',
+          'SELECT status,config_version FROM evoting_v2_election_control WHERE election_id=$1 FOR SHARE',
           [ELECTION_ID]
         );
         if (control.rows[0]?.status !== 'open') {
           await client.query('ROLLBACK');
           return json(403, { error: 'Pemungutan suara sedang tidak dibuka.' });
+        }
+        if (Number(control.rows[0]?.config_version) !== submittedConfigVersion) {
+          await client.query('ROLLBACK');
+          return json(409, { error: 'Data calon telah diperbarui. Muat ulang halaman sebelum mengirim suara.' });
         }
 
         const previousRequest = await client.query(
@@ -614,7 +624,9 @@ async function handleEvent(event) {
     if (method === 'POST' && route === '/admin/config') {
       const body = parseBody(event);
       const current = await getV2Config();
-      const currentStatus = pool ? await getControlStatus() : 'scheduled';
+      const currentControl = pool ? await getControl() : { status: 'scheduled', config_version: Number(current.configVersion || 1) };
+      const currentStatus = currentControl.status;
+      const currentVersion = Number(currentControl.config_version || 1);
       const allowedStatus = ['scheduled', 'open', 'closed'];
       const nextStatus = allowedStatus.includes(body.status) ? body.status : currentStatus;
       let candidates;
@@ -637,8 +649,10 @@ async function handleEvent(event) {
         }
       }
 
+      const nextVersion = candidatesChanged ? currentVersion + 1 : currentVersion;
       const next = {
         ...current,
+        configVersion: nextVersion,
         title: String(body.title ?? current.title).slice(0, 160),
         institution: String(body.institution ?? current.institution).slice(0, 160),
         period: String(body.period ?? current.period).slice(0, 80),
@@ -647,9 +661,9 @@ async function handleEvent(event) {
         status: nextStatus
       };
 
-      if (pool && nextStatus !== 'open') await setControlStatus(nextStatus);
+      if (pool) await setControlStatus(nextStatus === 'open' ? currentStatus : nextStatus, pool, nextVersion);
       await stores.config().setJSON('v2/main', next);
-      if (pool && nextStatus === 'open') await setControlStatus('open');
+      if (pool && nextStatus === 'open') await setControlStatus('open', pool, nextVersion);
       if (pool) await writeAudit('election.config.updated', null, { status: nextStatus, candidatesChanged });
       return json(200, { ok: true, config: next, databaseConfigured: Boolean(pool) });
     }

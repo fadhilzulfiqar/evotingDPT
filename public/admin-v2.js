@@ -119,6 +119,7 @@
   function renderResults() {
     let html = heading('HASIL PEMILIHAN', 'Rekapitulasi suara', 'Perolehan suara Ketua dan Wakil dihitung dan ditampilkan secara terpisah.');
     if (stats.setupRequired) html += '<div class="notice-error">Rekap belum tersedia karena PostgreSQL belum dikonfigurasi.</div>';
+    else if (!stats.resultsVisible) html += '<div class="notice-error">Perolehan suara setiap calon disembunyikan selama pemungutan suara berlangsung untuk mengurangi potensi bias. Status partisipasi pemilih tetap dapat dipantau. Rekap akan dibuka setelah admin menutup pemilihan.</div>';
     else {
       html += '<div class="admin-content-grid">' + statCard('TOTAL SURAT SUARA', stats.totalBallots, 'Satu surat suara berisi pilihan dua jabatan') + statCard('SUDAH MEMILIH', stats.voted, 'Akun pemilih aktif') + statCard('BELUM MEMILIH', stats.remaining, 'Akun pemilih aktif') + '</div>';
       html += renderResultGroup('ketua', stats.config.candidates.ketua, stats.chairCounts);
@@ -279,7 +280,7 @@
   }
 
   function exportCsv() {
-    if (!stats || stats.setupRequired) return;
+    if (!stats || stats.setupRequired || !stats.resultsVisible) return;
     const rows = [['JENIS','NOMOR','NAMA CALON','JUMLAH SUARA'],
       ...stats.config.candidates.ketua.map(candidate => ['Ketua',candidate.number,candidate.name,stats.chairCounts[candidate.id]||0]),
       ...stats.config.candidates.wakil.map(candidate => ['Wakil',candidate.number,candidate.name,stats.viceCounts[candidate.id]||0]),

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#09111f">
+  <title>Admin E-Voting DPT v2</title>
+  <link rel="stylesheet" href="/v2.css">
+  <link rel="stylesheet" href="/admin-v2.css">
+</head>
+<body class="admin-v2">
+  <section id="adminLoginView" class="admin-login-wrap">
+    <form id="adminLoginForm" class="panel admin-login">
+      <a class="v2-brand" href="/v2"><span class="brand-mark">DPT</span><span><b>Dewan Perwakilan Taruna</b><small>Politeknik Agraria STPN · 2026–2027</small></span></a>
+      <div class="eyebrow">AKSES TERBATAS</div>
+      <h1>Dashboard Admin</h1>
+      <p class="muted">Kelola calon, akun pemilih, status pemilihan, audit, dan rekapitulasi.</p>
+      <div id="adminLoginFeedback" class="feedback"></div>
+      <label>Username admin<input id="adminUsername" value="admin_dpt" autocomplete="username" required></label>
+      <label>Password admin<input id="adminPassword" type="password" autocomplete="current-password" required placeholder="Masukkan password admin"></label>
+      <button id="adminLoginButton" class="primary-button" type="submit">Masuk dashboard →</button>
+      <a class="text-link" href="/v2">← Kembali ke portal pemilih</a>
+    </form>
+  </section>
+
+  <section id="adminShell" class="admin-shell hidden">
+    <aside class="admin-sidebar">
+      <a class="v2-brand" href="/v2"><span class="brand-mark">DPT</span><span><b>EVOTING DPT</b><small>ADMINISTRATOR · V2</small></span></a>
+      <nav class="admin-nav">
+        <button data-tab="overview" class="active" type="button">Ringkasan</button>
+        <button data-tab="candidates" type="button">Data calon</button>
+        <button data-tab="voters" type="button">Data pemilih</button>
+        <button data-tab="results" type="button">Rekap suara</button>
+        <button data-tab="audit" type="button">Audit aktivitas</button>
+        <button data-tab="settings" type="button">Keamanan & arsip</button>
+      </nav>
+      <div class="sidebar-bottom">POLITEKNIK AGRARIA STPN<br>PERIODE 2026–2027</div>
+    </aside>
+    <main class="admin-main">
+      <header class="admin-topbar">
+        <div><span class="eyebrow">PANEL PENGELOLAAN</span><h1 id="adminElectionName">Pemilihan DPT</h1></div>
+        <div class="top-actions"><a class="secondary-button" href="/v2">Portal pemilih ↗</a><button id="logoutButton" class="danger-button" type="button">Keluar</button></div>
+      </header>
+      <div id="adminFeedback" class="feedback" aria-live="polite"></div>
+      <div id="adminContent"></div>
+      <footer class="admin-footer">EVOTING DPT · SISTEM PEMILIHAN INDEPENDEN V2</footer>
+    </main>
+  </section>
+  <script src="/admin-v2.js" defer></script>
+</body>
+</html>

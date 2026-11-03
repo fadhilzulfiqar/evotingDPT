@@ -433,6 +433,7 @@ async function getAdminStats() {
 
 async function archiveLegacyData() {
   const configStore = stores.config();
+  const usersStore = stores.users();
   const votesStore = stores.votes();
   const archiveStore = stores.legacyArchive();
   const backupId = 'legacy-trial-' + new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14) + '-' + crypto.randomBytes(3).toString('hex');
@@ -443,67 +444,91 @@ async function archiveLegacyData() {
     throw error;
   }
 
-  const voterKeys = (await votesStore.list({ prefix: 'voter/' })).blobs || [];
-  const ballotKeys = (await votesStore.list({ prefix: 'ballot/' })).blobs || [];
-  const voterSnapshot = [];
-  const ballotSnapshot = [];
+  const [voterKeys, usernameKeys, lockKeys, ballotKeys] = await Promise.all([
+    usersStore.list({ prefix: 'user/' }),
+    usersStore.list({ prefix: 'username/' }),
+    votesStore.list({ prefix: 'voter/' }),
+    votesStore.list({ prefix: 'ballot/' })
+  ]);
+  const snapshots = {
+    users: [],
+    usernames: [],
+    voterLocks: [],
+    ballots: []
+  };
 
   if (oldConfig) await archiveStore.setJSON(backupId + '/legacy-config', oldConfig, { onlyIfNew: true });
 
-  for (const entry of voterKeys) {
-    const value = await votesStore.get(entry.key, { type: 'json', consistency: 'strong' });
-    if (value) {
-      await archiveStore.setJSON(backupId + '/votes/' + entry.key, value, { onlyIfNew: true });
-      voterSnapshot.push({ key: entry.key, value });
+  const copyGroup = async (entries, sourceStore, destinationPrefix, snapshotGroup) => {
+    for (const entry of (entries.blobs || [])) {
+      const value = await sourceStore.get(entry.key, { type: 'json', consistency: 'strong' });
+      if (value) {
+        await archiveStore.setJSON(backupId + '/' + destinationPrefix + entry.key, value, { onlyIfNew: true });
+        snapshots[snapshotGroup].push({ key: entry.key, value });
+      }
     }
-  }
-  for (const entry of ballotKeys) {
-    const value = await votesStore.get(entry.key, { type: 'json', consistency: 'strong' });
-    if (value) {
-      await archiveStore.setJSON(backupId + '/votes/' + entry.key, value, { onlyIfNew: true });
-      ballotSnapshot.push({ key: entry.key, value });
-    }
-  }
+  };
 
-  const [configAfter, voterKeysAfter, ballotKeysAfter] = await Promise.all([
+  await copyGroup(voterKeys, usersStore, 'users/', 'users');
+  await copyGroup(usernameKeys, usersStore, 'users/', 'usernames');
+  await copyGroup(lockKeys, votesStore, 'votes/', 'voterLocks');
+  await copyGroup(ballotKeys, votesStore, 'votes/', 'ballots');
+
+  const [configAfter, userKeysAfter, usernameKeysAfter, lockKeysAfter, ballotKeysAfter] = await Promise.all([
     configStore.get('main', { type: 'json', consistency: 'strong' }),
+    usersStore.list({ prefix: 'user/' }),
+    usersStore.list({ prefix: 'username/' }),
     votesStore.list({ prefix: 'voter/' }),
     votesStore.list({ prefix: 'ballot/' })
   ]);
   const keySignature = entries => (entries || []).map(entry => entry.key).sort().join('|');
   let stable = JSON.stringify(configAfter) === JSON.stringify(oldConfig)
-    && keySignature(voterKeysAfter.blobs) === keySignature(voterKeys)
-    && keySignature(ballotKeysAfter.blobs) === keySignature(ballotKeys);
+    && keySignature(userKeysAfter.blobs) === keySignature(voterKeys.blobs)
+    && keySignature(usernameKeysAfter.blobs) === keySignature(usernameKeys.blobs)
+    && keySignature(lockKeysAfter.blobs) === keySignature(lockKeys.blobs)
+    && keySignature(ballotKeysAfter.blobs) === keySignature(ballotKeys.blobs);
 
-  if (stable) {
-    for (const item of voterSnapshot) {
-      const current = await votesStore.get(item.key, { type: 'json', consistency: 'strong' });
-      if (JSON.stringify(current) !== JSON.stringify(item.value)) { stable = false; break; }
+  const verifyGroup = async (items, sourceStore) => {
+    for (const item of items) {
+      const current = await sourceStore.get(item.key, { type: 'json', consistency: 'strong' });
+      if (JSON.stringify(current) !== JSON.stringify(item.value)) return false;
     }
-  }
-  if (stable) {
-    for (const item of ballotSnapshot) {
-      const current = await votesStore.get(item.key, { type: 'json', consistency: 'strong' });
-      if (JSON.stringify(current) !== JSON.stringify(item.value)) { stable = false; break; }
-    }
-  }
+    return true;
+  };
+  if (stable) stable = await verifyGroup(snapshots.users, usersStore);
+  if (stable) stable = await verifyGroup(snapshots.usernames, usersStore);
+  if (stable) stable = await verifyGroup(snapshots.voterLocks, votesStore);
+  if (stable) stable = await verifyGroup(snapshots.ballots, votesStore);
+
   if (!stable) {
     const error = new Error('Data trial berubah ketika backup berlangsung. Tutup sistem trial, tunggu transaksi selesai, lalu ulangi backup.');
     error.code = 'LEGACY_CHANGED_DURING_BACKUP';
     throw error;
   }
 
+  const checksumItems = [
+    ...(oldConfig ? [{ store: 'config', key: 'main', value: oldConfig }] : []),
+    ...snapshots.users.map(item => ({ store: 'users', key: item.key, value: item.value })),
+    ...snapshots.usernames.map(item => ({ store: 'usernames', key: item.key, value: item.value })),
+    ...snapshots.voterLocks.map(item => ({ store: 'voter-locks', key: item.key, value: item.value })),
+    ...snapshots.ballots.map(item => ({ store: 'ballots', key: item.key, value: item.value }))
+  ].sort((a, b) => (a.store + '/' + a.key).localeCompare(b.store + '/' + b.key));
+  const checksum = crypto.createHash('sha256').update(JSON.stringify(checksumItems)).digest('hex');
+
   const manifest = {
     backupId,
     type: 'legacy-trial-preservation',
     createdAt: new Date().toISOString(),
     legacyConfigCopied: Boolean(oldConfig),
-    voterLockRecordsCopied: voterSnapshot.length,
-    ballotRecordsCopied: ballotSnapshot.length,
+    userRecordsCopied: snapshots.users.length,
+    usernameMappingsCopied: snapshots.usernames.length,
+    voterLockRecordsCopied: snapshots.voterLocks.length,
+    ballotRecordsCopied: snapshots.ballots.length,
     snapshotVerified: true,
+    sha256: checksum,
     originalStoresRetained: true,
     voterAccountsRetainedInOriginalStore: true,
-    note: 'Arsip privat untuk preservasi. Record voter-lock lama dapat memuat hubungan internal antara akun dan pilihan. Jangan tampilkan isi arsip pada dashboard atau ekspor publik.'
+    note: 'Arsip privat berisi data akun (termasuk password hash), konfigurasi, voter-lock, dan ballot lama. Jangan tampilkan isi arsip pada dashboard atau ekspor publik.'
   };
   await archiveStore.setJSON(backupId + '/manifest', manifest, { onlyIfNew: true });
   return manifest;

@@ -76,15 +76,22 @@ function normalizeUsername(value) {
   return String(value || '').trim().toLowerCase();
 }
 
-function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
-  return salt + ':' + crypto.scryptSync(String(password), salt, 64).toString('hex');
+function scryptAsync(password, salt) {
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(String(password), salt, 64, (error, derivedKey) => error ? reject(error) : resolve(derivedKey));
+  });
 }
 
-function verifyPassword(password, stored) {
+async function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
+  const derivedKey = await scryptAsync(password, salt);
+  return salt + ':' + derivedKey.toString('hex');
+}
+
+async function verifyPassword(password, stored) {
   if (!stored || !stored.includes(':')) return false;
   const parts = stored.split(':');
   try {
-    const test = crypto.scryptSync(String(password), parts[0], 64);
+    const test = await scryptAsync(password, parts[0]);
     const hash = Buffer.from(parts[1], 'hex');
     return hash.length === test.length && crypto.timingSafeEqual(hash, test);
   } catch {
@@ -233,7 +240,7 @@ async function ensureAdmin() {
   if (!admin) {
     const seed = {
       username: 'admin_dpt',
-      passwordHash: hashPassword(bootstrap),
+      passwordHash: await hashPassword(bootstrap),
       bootstrapFingerprint: fingerprint,
       updatedAt: new Date().toISOString()
     };
@@ -245,7 +252,7 @@ async function ensureAdmin() {
     admin = {
       ...admin,
       username: 'admin_dpt',
-      passwordHash: hashPassword(bootstrap),
+      passwordHash: await hashPassword(bootstrap),
       bootstrapFingerprint: fingerprint,
       updatedAt: new Date().toISOString()
     };
@@ -284,7 +291,7 @@ async function addUser(input) {
       name,
       username,
       usernameNormalized: normalized,
-      passwordHash: hashPassword(password),
+      passwordHash: await hashPassword(password),
       active: true,
       createdAt: new Date().toISOString()
     }, { onlyIfNew: true });
@@ -491,7 +498,7 @@ async function handleEvent(event) {
     if (method === 'POST' && route === '/login') {
       const body = parseBody(event);
       const user = await getUserByUsername(body.username);
-      if (!user || !verifyPassword(body.password, user.passwordHash)) return json(401, { error: 'Username atau password salah.' });
+      if (!user || !(await verifyPassword(body.password, user.passwordHash))) return json(401, { error: 'Username atau password salah.' });
       if (user.active === false) return json(403, { error: 'Akun pemilih telah dinonaktifkan oleh panitia.' });
       const cookie = await createSession(event, 'voter', user.id);
       return json(200, { ok: true, user: { name: user.name, username: user.username } }, { 'set-cookie': cookie });
@@ -610,7 +617,7 @@ async function handleEvent(event) {
     if (method === 'POST' && route === '/admin/login') {
       const body = parseBody(event);
       const admin = await ensureAdmin();
-      if (!admin || String(body.username || '') !== admin.username || !verifyPassword(body.password, admin.passwordHash)) {
+      if (!admin || String(body.username || '') !== admin.username || !(await verifyPassword(body.password, admin.passwordHash))) {
         return json(401, { error: 'Username atau password admin salah.' });
       }
       const cookie = await createSession(event, 'admin', 'admin');
@@ -843,9 +850,9 @@ async function handleEvent(event) {
       const admin = await ensureAdmin();
       const oldPassword = String(body.oldPassword || '');
       const newPassword = String(body.newPassword || '');
-      if (!verifyPassword(oldPassword, admin.passwordHash)) return json(403, { error: 'Password admin lama salah.' });
+      if (!(await verifyPassword(oldPassword, admin.passwordHash))) return json(403, { error: 'Password admin lama salah.' });
       if (newPassword.length < 8) return json(400, { error: 'Password admin baru minimal 8 karakter.' });
-      const next = { ...admin, passwordHash: hashPassword(newPassword), updatedAt: new Date().toISOString() };
+      const next = { ...admin, passwordHash: await hashPassword(newPassword), updatedAt: new Date().toISOString() };
       await stores.admins().setJSON('main', next);
       if (pool) await writeAudit('admin.password_changed', 'admin', {});
       await destroySession(event);

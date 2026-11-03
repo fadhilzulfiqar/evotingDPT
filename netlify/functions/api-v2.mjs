@@ -37,13 +37,15 @@ const DEFAULT_CONFIG = {
   }
 };
 
+const STORE_PREFIX = process.env.CONTEXT === 'production' ? '' : 'v2-preview-';
+const storeName = name => STORE_PREFIX + name;
 const stores = {
-  config: () => getStore('evoting-config'),
-  users: () => getStore('evoting-users'),
-  votes: () => getStore('evoting-votes'),
-  admins: () => getStore('evoting-admins'),
-  sessions: () => getStore('evoting-sessions'),
-  legacyArchive: () => getStore('evoting-legacy-archive')
+  config: () => getStore(storeName('evoting-config')),
+  users: () => getStore(storeName('evoting-users')),
+  votes: () => getStore(storeName('evoting-votes')),
+  admins: () => getStore(storeName('evoting-admins')),
+  sessions: () => getStore(storeName('evoting-sessions')),
+  legacyArchive: () => getStore(storeName('evoting-legacy-archive'))
 };
 
 let schemaPromise = null;
@@ -753,6 +755,7 @@ async function handleEvent(event) {
     }
 
     if (method === 'POST' && route === '/admin/legacy-archive') {
+      if (process.env.CONTEXT !== 'production') return json(409, { error: 'Arsip data produksi hanya dapat dijalankan pada deploy production setelah pemeriksaan admin.' });
       const manifest = await archiveLegacyData();
       if (pool) await writeAudit('legacy_trial.archived', manifest.backupId, {
         voterLockRecordsCopied: manifest.voterLockRecordsCopied,

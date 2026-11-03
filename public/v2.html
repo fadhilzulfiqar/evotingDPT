@@ -22,9 +22,9 @@
 
   <main class="v2-main">
     <section class="v2-hero">
-      <div class="hero-overline">PEMILIHAN DPT · PERIODE 2026–2027</div>
-      <h1>Satu suara.<br><em>Dua keputusan.</em></h1>
-      <p>Pilih satu calon Ketua dan satu calon Wakil Ketua secara terpisah. Pastikan pilihan Anda benar sebelum mengirim surat suara.</p>
+      <div class="hero-overline">PEMILIHAN KETUA & WAKIL KETUA DPT</div>
+      <h1>Pemimpin Parlemen<br><em>DPT Periode 2026–2027</em></h1>
+      <p>Tentukan arah kepemimpinan DPT dengan memilih satu calon Ketua dan satu calon Wakil Ketua secara terpisah. Dua pilihan Anda dikirim dalam satu surat suara.</p>
       <div class="hero-points">
         <span><b>01</b> Pilih Ketua</span>
         <span><b>02</b> Pilih Wakil</span>
@@ -119,6 +119,15 @@
         <button id="changeSelection" class="secondary-button" type="button">Kembali</button>
         <button id="sendVote" class="primary-button" type="button" disabled>Kirim suara <span>→</span></button>
       </div>
+    </div>
+  </div>
+
+  <div id="submissionOverlay" class="submission-overlay hidden" role="status" aria-live="assertive" aria-busy="true">
+    <div class="submission-card">
+      <span class="submission-spinner" aria-hidden="true"></span>
+      <strong>Memproses surat suara</strong>
+      <p>Server sedang mencatat pilihan Ketua dan Wakil secara bersamaan.</p>
+      <small>Jangan tutup halaman atau menekan tombol kembali sampai proses selesai.</small>
     </div>
   </div>
 

@@ -7,6 +7,10 @@
 - API v2: `/api/v2/*`
 - API dan halaman lama tidak diganti oleh branch ini.
 
+## Target Netlify yang benar
+
+Project target adalah `evotedpt.netlify.app`. Pemeriksaan project Netlify menunjukkan project tersebut terakhir dipublikasikan melalui Netlify Drop. Repository yang muncul pada commit deploy adalah `fadhilzulfiqar/evotingDPT`, tetapi project target belum menghasilkan Deploy Preview dari branch ini. Project lain bernama `evotingdpt` terhubung ke GitHub dan menghasilkan preview untuk PR, tetapi domain serta data pemilihnya berbeda. Jangan gunakan preview `evotingdpt` sebagai validasi untuk target `evotedpt`. Hubungkan project `evotedpt` ke repository `fadhilzulfiqar/evotingDPT` sebelum menguji deploy preview atau mempromosikan kode.
+
 ## Rilis dua tahap
 
 **Tahap 1 — pre-backup:** branch ini hanya menambahkan `/v2`, `/admin-v2`, dan `/api/v2/*`. Halaman utama, `/admin`, dan API v1 tetap berjalan seperti semula. Tidak ada redirect cutover dan tidak ada data lama yang diubah.

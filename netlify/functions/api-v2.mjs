@@ -179,10 +179,10 @@ async function ensureSchema() {
         'CREATE TABLE IF NOT EXISTS evoting_v2_participation (' +
         'election_id TEXT NOT NULL, voter_id TEXT NOT NULL, voted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (election_id, voter_id));\n' +
         'CREATE TABLE IF NOT EXISTS evoting_v2_ballots (' +
-        'ballot_id UUID PRIMARY KEY, election_id TEXT NOT NULL, idempotency_key UUID NOT NULL, chair_candidate_id TEXT NOT NULL CHECK (chair_candidate_id IN (\'K01\',\'K02\')), vice_candidate_id TEXT NOT NULL CHECK (vice_candidate_id IN (\'W01\',\'W02\')), voted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE (election_id, idempotency_key));\n' +
+        'ballot_id UUID PRIMARY KEY, election_id TEXT NOT NULL, idempotency_key UUID NOT NULL, chair_candidate_id TEXT NOT NULL CHECK (chair_candidate_id IN (\'K01\',\'K02\')), vice_candidate_id TEXT NOT NULL CHECK (vice_candidate_id IN (\'W01\',\'W02\')), UNIQUE (election_id, idempotency_key));\n' +
         'CREATE INDEX IF NOT EXISTS evoting_v2_ballots_election_idx ON evoting_v2_ballots (election_id);\n' +
         'CREATE TABLE IF NOT EXISTS evoting_v2_ballot_archive (' +
-        'archive_id UUID NOT NULL, election_id TEXT NOT NULL, ballot_id UUID NOT NULL, chair_candidate_id TEXT NOT NULL, vice_candidate_id TEXT NOT NULL, voted_at TIMESTAMPTZ NOT NULL, archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (archive_id, ballot_id));\n' +
+        'archive_id UUID NOT NULL, election_id TEXT NOT NULL, ballot_id UUID NOT NULL, chair_candidate_id TEXT NOT NULL, vice_candidate_id TEXT NOT NULL, archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (archive_id, ballot_id));\n' +
         'CREATE TABLE IF NOT EXISTS evoting_v2_participation_archive (' +
         'archive_id UUID NOT NULL, election_id TEXT NOT NULL, voter_id TEXT NOT NULL, voted_at TIMESTAMPTZ NOT NULL, archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (archive_id, election_id, voter_id));\n' +
         'CREATE TABLE IF NOT EXISTS evoting_v2_admin_audit (' +
@@ -190,6 +190,10 @@ async function ensureSchema() {
         'INSERT INTO evoting_v2_election_control (election_id, status) VALUES (\'dpt-2026-2027-independent-v2\', \'scheduled\') ON CONFLICT (election_id) DO NOTHING;';
       await pool.query(ddl);
       await pool.query('ALTER TABLE evoting_v2_election_control ADD COLUMN IF NOT EXISTS config_version INTEGER NOT NULL DEFAULT 1');
+      // Exact ballot timestamps could be correlated with voter participation timestamps.
+      // Preserve the timestamp only in the identity/participation table, never on ballots.
+      await pool.query('ALTER TABLE evoting_v2_ballots DROP COLUMN IF EXISTS voted_at');
+      await pool.query('ALTER TABLE evoting_v2_ballot_archive DROP COLUMN IF EXISTS voted_at');
       const ballotConstraints = [
         "ALTER TABLE evoting_v2_ballots ADD CONSTRAINT evoting_v2_ballots_chair_check CHECK (chair_candidate_id IN ('K01','K02'))",
         "ALTER TABLE evoting_v2_ballots ADD CONSTRAINT evoting_v2_ballots_vice_check CHECK (vice_candidate_id IN ('W01','W02'))"
@@ -971,8 +975,8 @@ async function handleEvent(event) {
           return json(409, { error: 'Tutup pemilihan terlebih dahulu sebelum reset.' });
         }
         await client.query(
-          'INSERT INTO evoting_v2_ballot_archive (archive_id,election_id,ballot_id,chair_candidate_id,vice_candidate_id,voted_at) ' +
-          'SELECT $1,election_id,ballot_id,chair_candidate_id,vice_candidate_id,voted_at FROM evoting_v2_ballots WHERE election_id=$2',
+          'INSERT INTO evoting_v2_ballot_archive (archive_id,election_id,ballot_id,chair_candidate_id,vice_candidate_id) ' +
+          'SELECT $1,election_id,ballot_id,chair_candidate_id,vice_candidate_id FROM evoting_v2_ballots WHERE election_id=$2',
           [archiveId, ELECTION_ID]
         );
         await client.query(

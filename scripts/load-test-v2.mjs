@@ -38,7 +38,6 @@ const rows = Array.from({ length: count }, (_, index) => ({
 const importResponse = await request('/api/v2/admin/users/bulk', {
   method: 'POST',
   headers: { cookie: adminCookie },
-  method: 'POST',
   body: JSON.stringify({ rows })
 });
 const importResult = await importResponse.json();

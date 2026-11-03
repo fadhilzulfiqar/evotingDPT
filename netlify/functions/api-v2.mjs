@@ -1,0 +1,839 @@
+import { getStore } from '@netlify/blobs';
+import pg from 'pg';
+import crypto from 'node:crypto';
+
+const { Pool } = pg;
+const ELECTION_ID = 'dpt-2026-2027-independent-v2';
+const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+const USERNAME_RE = /^[A-Za-z0-9._@+-]{2,80}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const pool = process.env.DATABASE_URL
+  ? new Pool({
+      connectionString: process.env.DATABASE_URL,
+      max: 3,
+      idleTimeoutMillis: 10000,
+      connectionTimeoutMillis: 7000,
+      allowExitOnIdle: true
+    })
+  : null;
+
+const DEFAULT_CONFIG = {
+  version: 2,
+  title: 'Pemilihan Ketua dan Wakil Ketua DPT',
+  institution: 'Politeknik Agraria STPN',
+  period: '2026–2027',
+  tagline: 'SATU SUARA UNTUK MASA DEPAN DPT',
+  status: 'scheduled',
+  candidates: {
+    ketua: [
+      { id: 'K01', number: '01', name: '', photo: '' },
+      { id: 'K02', number: '02', name: '', photo: '' }
+    ],
+    wakil: [
+      { id: 'W01', number: '01', name: '', photo: '' },
+      { id: 'W02', number: '02', name: '', photo: '' }
+    ]
+  }
+};
+
+const stores = {
+  config: () => getStore('evoting-config'),
+  users: () => getStore('evoting-users'),
+  votes: () => getStore('evoting-votes'),
+  admins: () => getStore('evoting-admins'),
+  sessions: () => getStore('evoting-sessions'),
+  legacyArchive: () => getStore('evoting-legacy-archive')
+};
+
+let schemaPromise = null;
+
+function json(statusCode, body, extraHeaders = {}) {
+  return {
+    statusCode,
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+      'x-content-type-options': 'nosniff',
+      'x-frame-options': 'DENY',
+      ...extraHeaders
+    },
+    body: JSON.stringify(body)
+  };
+}
+
+function parseBody(event) {
+  if (!event.body) return {};
+  const raw = event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString('utf8') : event.body;
+  if (Buffer.byteLength(raw, 'utf8') > 5_500_000) throw new Error('Payload terlalu besar.');
+  try { return JSON.parse(raw); }
+  catch { throw new Error('JSON tidak valid.'); }
+}
+
+function normalizeUsername(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
+  return salt + ':' + crypto.scryptSync(String(password), salt, 64).toString('hex');
+}
+
+function verifyPassword(password, stored) {
+  if (!stored || !stored.includes(':')) return false;
+  const parts = stored.split(':');
+  try {
+    const test = crypto.scryptSync(String(password), parts[0], 64);
+    const hash = Buffer.from(parts[1], 'hex');
+    return hash.length === test.length && crypto.timingSafeEqual(hash, test);
+  } catch {
+    return false;
+  }
+}
+
+function getCookie(event, name) {
+  const cookie = event.headers?.cookie || event.headers?.Cookie || '';
+  for (const part of cookie.split(';')) {
+    const i = part.indexOf('=');
+    if (i < 0) continue;
+    if (part.slice(0, i).trim() === name) {
+      try { return decodeURIComponent(part.slice(i + 1).trim()); }
+      catch { return null; }
+    }
+  }
+  return null;
+}
+
+function isHttps(event) {
+  const proto = String(event.headers?.['x-forwarded-proto'] || '').toLowerCase();
+  const host = String(event.headers?.host || '');
+  return proto === 'https' || (!host.includes('localhost') && !host.startsWith('127.0.0.1'));
+}
+
+function sessionCookie(event, token, maxAge = 28800) {
+  return 'sid=' + encodeURIComponent(token) + '; HttpOnly; SameSite=Strict; Path=/; Max-Age=' + maxAge + (isHttps(event) ? '; Secure' : '');
+}
+
+async function createSession(event, kind, id) {
+  const token = crypto.randomBytes(32).toString('hex');
+  const now = Date.now();
+  await stores.sessions().setJSON('token/' + token, {
+    kind,
+    id,
+    createdAt: now,
+    expiresAt: now + SESSION_TTL_MS
+  }, { onlyIfNew: true });
+  return sessionCookie(event, token);
+}
+
+async function getSession(event) {
+  const token = getCookie(event, 'sid');
+  if (!token) return null;
+  const store = stores.sessions();
+  const session = await store.get('token/' + token, { type: 'json', consistency: 'strong' });
+  if (!session) return null;
+  if (!session.expiresAt || session.expiresAt < Date.now()) {
+    await store.delete('token/' + token).catch(() => {});
+    return null;
+  }
+  return { ...session, token };
+}
+
+async function destroySession(event) {
+  const token = getCookie(event, 'sid');
+  if (token) await stores.sessions().delete('token/' + token).catch(() => {});
+}
+
+async function requireSession(event, kind) {
+  const session = await getSession(event);
+  return session && session.kind === kind ? session : null;
+}
+
+async function getV2Config() {
+  const store = stores.config();
+  let config = await store.get('v2/main', { type: 'json', consistency: 'strong' });
+  if (!config) {
+    const result = await store.setJSON('v2/main', DEFAULT_CONFIG, { onlyIfNew: true });
+    config = result.modified ? DEFAULT_CONFIG : await store.get('v2/main', { type: 'json', consistency: 'strong' });
+  }
+  return config || DEFAULT_CONFIG;
+}
+
+async function ensureSchema() {
+  if (!pool) throw new Error('DATABASE_URL belum dikonfigurasi. Hubungkan PostgreSQL sebelum pemilihan dibuka.');
+  if (!schemaPromise) {
+    schemaPromise = (async () => {
+      const ddl =
+        'CREATE TABLE IF NOT EXISTS evoting_v2_election_control (' +
+        'election_id TEXT PRIMARY KEY, status TEXT NOT NULL CHECK (status IN (\\'scheduled\\',\\'open\\',\\'closed\\')), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());\\n' +
+        'CREATE TABLE IF NOT EXISTS evoting_v2_eligibility (' +
+        'election_id TEXT NOT NULL, voter_id TEXT NOT NULL, active BOOLEAN NOT NULL DEFAULT TRUE, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (election_id, voter_id));\\n' +
+        'CREATE TABLE IF NOT EXISTS evoting_v2_participation (' +
+        'election_id TEXT NOT NULL, voter_id TEXT NOT NULL, voted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (election_id, voter_id));\\n' +
+        'CREATE TABLE IF NOT EXISTS evoting_v2_ballots (' +
+        'ballot_id UUID PRIMARY KEY, election_id TEXT NOT NULL, idempotency_key UUID NOT NULL, chair_candidate_id TEXT NOT NULL, vice_candidate_id TEXT NOT NULL, voted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE (election_id, idempotency_key));\\n' +
+        'CREATE INDEX IF NOT EXISTS evoting_v2_ballots_election_idx ON evoting_v2_ballots (election_id);\\n' +
+        'CREATE TABLE IF NOT EXISTS evoting_v2_ballot_archive (' +
+        'archive_id UUID NOT NULL, election_id TEXT NOT NULL, ballot_id UUID NOT NULL, chair_candidate_id TEXT NOT NULL, vice_candidate_id TEXT NOT NULL, voted_at TIMESTAMPTZ NOT NULL, archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (archive_id, ballot_id));\\n' +
+        'CREATE TABLE IF NOT EXISTS evoting_v2_participation_archive (' +
+        'archive_id UUID NOT NULL, election_id TEXT NOT NULL, voter_id TEXT NOT NULL, voted_at TIMESTAMPTZ NOT NULL, archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (archive_id, election_id, voter_id));\\n' +
+        'CREATE TABLE IF NOT EXISTS evoting_v2_admin_audit (' +
+        'id BIGSERIAL PRIMARY KEY, election_id TEXT NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL, target_id TEXT, details JSONB NOT NULL DEFAULT \\'{}\\'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());\\n' +
+        'INSERT INTO evoting_v2_election_control (election_id, status) VALUES (\\'dpt-2026-2027-independent-v2\\', \\'scheduled\\') ON CONFLICT (election_id) DO NOTHING;';
+      await pool.query(ddl);
+      return true;
+    })().catch(error => {
+      schemaPromise = null;
+      throw error;
+    });
+  }
+  return schemaPromise;
+}
+
+async function getControlStatus() {
+  await ensureSchema();
+  const result = await pool.query(
+    'SELECT status FROM evoting_v2_election_control WHERE election_id = $1',
+    [ELECTION_ID]
+  );
+  return result.rows[0]?.status || 'scheduled';
+}
+
+async function setControlStatus(status, client = pool) {
+  await client.query(
+    'INSERT INTO evoting_v2_election_control (election_id, status, updated_at) VALUES ($1, $2, NOW()) ' +
+    'ON CONFLICT (election_id) DO UPDATE SET status = EXCLUDED.status, updated_at = NOW()',
+    [ELECTION_ID, status]
+  );
+}
+
+async function writeAudit(action, targetId = null, details = {}) {
+  await ensureSchema();
+  await pool.query(
+    'INSERT INTO evoting_v2_admin_audit (election_id, actor, action, target_id, details) VALUES ($1,$2,$3,$4,$5::jsonb)',
+    [ELECTION_ID, 'admin', action, targetId, JSON.stringify(details)]
+  );
+}
+
+async function ensureAdmin() {
+  const store = stores.admins();
+  let admin = await store.get('main', { type: 'json', consistency: 'strong' });
+  const bootstrap = String(process.env.ADMIN_BOOTSTRAP_PASSWORD || process.env.admin_dpt || process.env.ADMIN_DPT || '');
+  if (bootstrap.length < 8) {
+    if (admin) return admin;
+    throw new Error('ADMIN_BOOTSTRAP_PASSWORD belum diatur atau kurang dari 8 karakter.');
+  }
+  const fingerprint = crypto.createHash('sha256').update(bootstrap).digest('hex');
+  if (!admin) {
+    const seed = {
+      username: 'admin_dpt',
+      passwordHash: hashPassword(bootstrap),
+      bootstrapFingerprint: fingerprint,
+      updatedAt: new Date().toISOString()
+    };
+    const result = await store.setJSON('main', seed, { onlyIfNew: true });
+    if (result.modified) return seed;
+    admin = await store.get('main', { type: 'json', consistency: 'strong' });
+  }
+  if (admin && admin.bootstrapFingerprint !== fingerprint) {
+    admin = {
+      ...admin,
+      username: 'admin_dpt',
+      passwordHash: hashPassword(bootstrap),
+      bootstrapFingerprint: fingerprint,
+      updatedAt: new Date().toISOString()
+    };
+    await store.setJSON('main', admin);
+  }
+  return admin;
+}
+
+async function getUserById(id) {
+  return await stores.users().get('user/' + id, { type: 'json', consistency: 'strong' });
+}
+
+async function getUserByUsername(username) {
+  const key = normalizeUsername(username);
+  if (!key) return null;
+  const mapping = await stores.users().get('username/' + key, { type: 'json', consistency: 'strong' });
+  if (!mapping?.id) return null;
+  return await getUserById(mapping.id);
+}
+
+async function addUser(input) {
+  const name = String(input?.name || '').trim();
+  const username = String(input?.username || '').trim();
+  const password = String(input?.password || '');
+  const normalized = normalizeUsername(username);
+  if (!name || !USERNAME_RE.test(username) || password.length < 4) {
+    return { ok: false, error: 'Nama, username valid, dan password minimal 4 karakter wajib diisi.' };
+  }
+  const users = stores.users();
+  const id = crypto.randomUUID();
+  const mapping = await users.setJSON('username/' + normalized, { id }, { onlyIfNew: true });
+  if (!mapping.modified) return { ok: false, duplicate: true, error: 'Username sudah digunakan.' };
+  try {
+    await users.setJSON('user/' + id, {
+      id,
+      name,
+      username,
+      usernameNormalized: normalized,
+      passwordHash: hashPassword(password),
+      active: true,
+      createdAt: new Date().toISOString()
+    }, { onlyIfNew: true });
+    if (pool) {
+      await ensureSchema();
+      await pool.query(
+        'INSERT INTO evoting_v2_eligibility (election_id, voter_id, active) VALUES ($1,$2,TRUE) ON CONFLICT DO NOTHING',
+        [ELECTION_ID, id]
+      );
+    }
+    return { ok: true, id };
+  } catch (error) {
+    await users.delete('user/' + id).catch(() => {});
+    await users.delete('username/' + normalized).catch(() => {});
+    throw error;
+  }
+}
+
+function normalizeCandidateGroup(items, prefix) {
+  if (!Array.isArray(items) || items.length !== 2) {
+    throw new Error('Setiap jabatan harus memiliki tepat dua calon.');
+  }
+  return items.map((item, index) => ({
+    id: prefix + '0' + (index + 1),
+    number: '0' + (index + 1),
+    name: String(item?.name || '').trim().slice(0, 120),
+    photo: String(item?.photo || '').slice(0, 1_250_000)
+  }));
+}
+
+function isCompleteCandidates(candidates) {
+  return ['ketua', 'wakil'].every(role =>
+    Array.isArray(candidates[role]) &&
+    candidates[role].length === 2 &&
+    candidates[role].every(candidate =>
+      candidate.name.length > 1 &&
+      /^data:image\\/(png|jpeg|jpg|webp);base64,/i.test(candidate.photo)
+    )
+  );
+}
+
+async function getAdminStats() {
+  const usersStore = stores.users();
+  const userList = await usersStore.list({ prefix: 'user/' });
+  const users = (await Promise.all(
+    userList.blobs.map(blob => usersStore.get(blob.key, { type: 'json', consistency: 'strong' }))
+  )).filter(Boolean);
+  const config = await getV2Config();
+
+  if (!pool) {
+    return {
+      setupRequired: true,
+      total: users.length,
+      activeTotal: users.filter(user => user.active !== false).length,
+      voted: null,
+      remaining: null,
+      participation: null,
+      chairCounts: { K01: 0, K02: 0 },
+      viceCounts: { W01: 0, W02: 0 },
+      users: users.map(user => ({
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        active: user.active !== false,
+        hasVoted: null,
+        votedAt: null
+      })).sort((a, b) => a.name.localeCompare(b.name, 'id')),
+      config,
+      database: 'not-configured'
+    };
+  }
+
+  await ensureSchema();
+  for (const user of users) {
+    await pool.query(
+      'INSERT INTO evoting_v2_eligibility (election_id, voter_id, active) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
+      [ELECTION_ID, user.id, user.active !== false]
+    );
+  }
+
+  const [eligibilityResult, participationResult, countResult, controlResult] = await Promise.all([
+    pool.query('SELECT voter_id, active FROM evoting_v2_eligibility WHERE election_id=$1', [ELECTION_ID]),
+    pool.query('SELECT voter_id, voted_at FROM evoting_v2_participation WHERE election_id=$1', [ELECTION_ID]),
+    pool.query(
+      'SELECT \\'ketua\\' AS role, chair_candidate_id AS candidate_id, COUNT(*)::int AS total ' +
+      'FROM evoting_v2_ballots WHERE election_id=$1 GROUP BY chair_candidate_id ' +
+      'UNION ALL SELECT \\'wakil\\' AS role, vice_candidate_id AS candidate_id, COUNT(*)::int AS total ' +
+      'FROM evoting_v2_ballots WHERE election_id=$1 GROUP BY vice_candidate_id',
+      [ELECTION_ID]
+    ),
+    pool.query('SELECT status FROM evoting_v2_election_control WHERE election_id=$1', [ELECTION_ID])
+  ]);
+
+  const eligibility = new Map(eligibilityResult.rows.map(row => [row.voter_id, row.active]));
+  const participation = new Map(participationResult.rows.map(row => [row.voter_id, row.voted_at]));
+  const chairCounts = { K01: 0, K02: 0 };
+  const viceCounts = { W01: 0, W02: 0 };
+  for (const row of countResult.rows) {
+    if (row.role === 'ketua' && Object.prototype.hasOwnProperty.call(chairCounts, row.candidate_id)) chairCounts[row.candidate_id] = Number(row.total);
+    if (row.role === 'wakil' && Object.prototype.hasOwnProperty.call(viceCounts, row.candidate_id)) viceCounts[row.candidate_id] = Number(row.total);
+  }
+
+  const safeUsers = users.map(user => {
+    const active = eligibility.has(user.id) ? eligibility.get(user.id) : user.active !== false;
+    const votedAt = participation.get(user.id) || null;
+    return {
+      id: user.id,
+      name: user.name,
+      username: user.username,
+      active,
+      hasVoted: Boolean(votedAt),
+      votedAt: votedAt ? new Date(votedAt).toISOString() : null
+    };
+  }).sort((a, b) => a.name.localeCompare(b.name, 'id'));
+
+  const activeTotal = safeUsers.filter(user => user.active).length;
+  const voted = safeUsers.filter(user => user.active && user.hasVoted).length;
+  const totalBallots = Object.values(chairCounts).reduce((sum, value) => sum + value, 0);
+  return {
+    setupRequired: false,
+    total: safeUsers.length,
+    activeTotal,
+    voted,
+    remaining: Math.max(0, activeTotal - voted),
+    participation: activeTotal ? Math.round(voted / activeTotal * 1000) / 10 : 0,
+    chairCounts,
+    viceCounts,
+    totalBallots,
+    users: safeUsers,
+    config: { ...config, status: controlResult.rows[0]?.status || 'scheduled' },
+    database: 'postgresql'
+  };
+}
+
+async function archiveLegacyData() {
+  const configStore = stores.config();
+  const votesStore = stores.votes();
+  const archiveStore = stores.legacyArchive();
+  const backupId = 'legacy-trial-' + new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14) + '-' + crypto.randomBytes(3).toString('hex');
+  const oldConfig = await configStore.get('main', { type: 'json', consistency: 'strong' });
+  const voterKeys = (await votesStore.list({ prefix: 'voter/' })).blobs || [];
+  const ballotKeys = (await votesStore.list({ prefix: 'ballot/' })).blobs || [];
+  let copiedVoterLocks = 0;
+  let copiedBallots = 0;
+
+  if (oldConfig) await archiveStore.setJSON(backupId + '/legacy-config', oldConfig, { onlyIfNew: true });
+
+  for (const entry of voterKeys) {
+    const value = await votesStore.get(entry.key, { type: 'json', consistency: 'strong' });
+    if (value) {
+      await archiveStore.setJSON(backupId + '/votes/' + entry.key, value, { onlyIfNew: true });
+      copiedVoterLocks += 1;
+    }
+  }
+  for (const entry of ballotKeys) {
+    const value = await votesStore.get(entry.key, { type: 'json', consistency: 'strong' });
+    if (value) {
+      await archiveStore.setJSON(backupId + '/votes/' + entry.key, value, { onlyIfNew: true });
+      copiedBallots += 1;
+    }
+  }
+
+  const manifest = {
+    backupId,
+    type: 'legacy-trial-preservation',
+    createdAt: new Date().toISOString(),
+    legacyConfigCopied: Boolean(oldConfig),
+    voterLockRecordsCopied: copiedVoterLocks,
+    ballotRecordsCopied: copiedBallots,
+    originalStoresRetained: true,
+    voterAccountsRetainedInOriginalStore: true,
+    note: 'Arsip privat untuk preservasi. Record voter-lock lama dapat memuat hubungan internal antara akun dan pilihan. Jangan tampilkan isi arsip pada dashboard atau ekspor publik.'
+  };
+  await archiveStore.setJSON(backupId + '/manifest', manifest, { onlyIfNew: true });
+  return manifest;
+}
+
+async function handleEvent(event) {
+  const method = String(event.httpMethod || 'GET').toUpperCase();
+  let route = event.path || '';
+  route = route.replace(/^\\/\\.netlify\\/functions\\/api-v2/, '');
+  route = route.replace(/^\\/api\\/v2/, '');
+  route = route || '/';
+
+  try {
+    if (method === 'GET' && route === '/health') {
+      if (!pool) return json(503, { ok: false, database: 'not-configured', required: 'DATABASE_URL' });
+      await ensureSchema();
+      await pool.query('SELECT 1');
+      return json(200, { ok: true, database: 'postgresql', storage: 'netlify-blobs', electionVersion: 2 });
+    }
+
+    if (method === 'GET' && route === '/election') {
+      const config = await getV2Config();
+      const status = pool ? await getControlStatus() : 'scheduled';
+      return json(200, { ...config, status, setupRequired: !pool });
+    }
+
+    if (method === 'POST' && route === '/login') {
+      const body = parseBody(event);
+      const user = await getUserByUsername(body.username);
+      if (!user || !verifyPassword(body.password, user.passwordHash)) return json(401, { error: 'Username atau password salah.' });
+      if (user.active === false) return json(403, { error: 'Akun pemilih telah dinonaktifkan oleh panitia.' });
+      const cookie = await createSession(event, 'voter', user.id);
+      return json(200, { ok: true, user: { name: user.name, username: user.username } }, { 'set-cookie': cookie });
+    }
+
+    if (method === 'GET' && route === '/me') {
+      const session = await requireSession(event, 'voter');
+      if (!session) return json(200, { loggedIn: false });
+      const user = await getUserById(session.id);
+      if (!user || user.active === false) return json(200, { loggedIn: false });
+      if (!pool) return json(200, { loggedIn: true, setupRequired: true, user: { name: user.name, username: user.username, hasVoted: null } });
+      await ensureSchema();
+      const result = await pool.query(
+        'SELECT voted_at FROM evoting_v2_participation WHERE election_id=$1 AND voter_id=$2',
+        [ELECTION_ID, user.id]
+      );
+      return json(200, {
+        loggedIn: true,
+        user: {
+          name: user.name,
+          username: user.username,
+          hasVoted: result.rows.length > 0,
+          votedAt: result.rows[0]?.voted_at || null
+        }
+      });
+    }
+
+    if (method === 'POST' && route === '/logout') {
+      await destroySession(event);
+      return json(200, { ok: true }, { 'set-cookie': sessionCookie(event, '', 0) });
+    }
+
+    if (method === 'POST' && route === '/vote') {
+      const session = await requireSession(event, 'voter');
+      if (!session) return json(401, { error: 'Sesi pemilih tidak valid. Silakan login kembali.' });
+      if (!pool) return json(503, { error: 'Database pemilihan belum terhubung. Suara belum dikirim.' });
+      const user = await getUserById(session.id);
+      if (!user || user.active === false) return json(403, { error: 'Akun pemilih tidak aktif.' });
+
+      const body = parseBody(event);
+      const chairCandidateId = String(body.chairCandidateId || '');
+      const viceCandidateId = String(body.viceCandidateId || '');
+      const idempotencyKey = String(body.idempotencyKey || '');
+      if (!UUID_RE.test(idempotencyKey)) return json(400, { error: 'Kunci transaksi tidak valid. Muat ulang halaman.' });
+
+      const config = await getV2Config();
+      const validChair = config.candidates.ketua.some(candidate => candidate.id === chairCandidateId);
+      const validVice = config.candidates.wakil.some(candidate => candidate.id === viceCandidateId);
+      if (!validChair || !validVice) return json(400, { error: 'Pilih tepat satu calon Ketua dan satu calon Wakil.' });
+
+      await ensureSchema();
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const control = await client.query(
+          'SELECT status FROM evoting_v2_election_control WHERE election_id=$1 FOR SHARE',
+          [ELECTION_ID]
+        );
+        if (control.rows[0]?.status !== 'open') {
+          await client.query('ROLLBACK');
+          return json(403, { error: 'Pemungutan suara sedang tidak dibuka.' });
+        }
+
+        const previousRequest = await client.query(
+          'SELECT ballot_id FROM evoting_v2_ballots WHERE election_id=$1 AND idempotency_key=$2',
+          [ELECTION_ID, idempotencyKey]
+        );
+        if (previousRequest.rows.length) {
+          await client.query('COMMIT');
+          return json(200, { ok: true, message: 'Pengiriman sebelumnya sudah tercatat.', repeated: true });
+        }
+
+        await client.query(
+          'INSERT INTO evoting_v2_eligibility (election_id,voter_id,active) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
+          [ELECTION_ID, user.id, user.active !== false]
+        );
+        const eligibility = await client.query(
+          'SELECT active FROM evoting_v2_eligibility WHERE election_id=$1 AND voter_id=$2 FOR UPDATE',
+          [ELECTION_ID, user.id]
+        );
+        if (!eligibility.rows[0] || !eligibility.rows[0].active) {
+          await client.query('ROLLBACK');
+          return json(403, { error: 'Hak pilih akun ini telah dinonaktifkan panitia.' });
+        }
+
+        const participation = await client.query(
+          'INSERT INTO evoting_v2_participation (election_id,voter_id) VALUES ($1,$2) ON CONFLICT DO NOTHING RETURNING voter_id',
+          [ELECTION_ID, user.id]
+        );
+        if (!participation.rows.length) {
+          await client.query('ROLLBACK');
+          return json(409, { error: 'Akun ini sudah menggunakan hak pilih.' });
+        }
+
+        await client.query(
+          'INSERT INTO evoting_v2_ballots (ballot_id,election_id,idempotency_key,chair_candidate_id,vice_candidate_id) VALUES ($1,$2,$3,$4,$5)',
+          [crypto.randomUUID(), ELECTION_ID, idempotencyKey, chairCandidateId, viceCandidateId]
+        );
+        await client.query('COMMIT');
+        return json(200, { ok: true, message: 'Pilihan Ketua dan Wakil berhasil direkam.' });
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        if (error.code === '23505') return json(409, { error: 'Akun ini sudah menggunakan hak pilih.' });
+        throw error;
+      } finally {
+        client.release();
+      }
+    }
+
+    if (method === 'POST' && route === '/admin/login') {
+      const body = parseBody(event);
+      const admin = await ensureAdmin();
+      if (!admin || String(body.username || '') !== admin.username || !verifyPassword(body.password, admin.passwordHash)) {
+        return json(401, { error: 'Username atau password admin salah.' });
+      }
+      const cookie = await createSession(event, 'admin', 'admin');
+      return json(200, { ok: true }, { 'set-cookie': cookie });
+    }
+
+    if (method === 'POST' && route === '/admin/logout') {
+      await destroySession(event);
+      return json(200, { ok: true }, { 'set-cookie': sessionCookie(event, '', 0) });
+    }
+
+    const adminSession = route.startsWith('/admin/') ? await requireSession(event, 'admin') : null;
+    if (route.startsWith('/admin/') && !adminSession) return json(401, { error: 'Akses admin tidak valid.' });
+
+    if (method === 'GET' && route === '/admin/stats') return json(200, await getAdminStats());
+
+    if (method === 'POST' && route === '/admin/config') {
+      const body = parseBody(event);
+      const current = await getV2Config();
+      const currentStatus = pool ? await getControlStatus() : 'scheduled';
+      const allowedStatus = ['scheduled', 'open', 'closed'];
+      const nextStatus = allowedStatus.includes(body.status) ? body.status : currentStatus;
+      let candidates;
+      try {
+        candidates = {
+          ketua: normalizeCandidateGroup(body.candidates?.ketua ?? current.candidates.ketua, 'K'),
+          wakil: normalizeCandidateGroup(body.candidates?.wakil ?? current.candidates.wakil, 'W')
+        };
+      } catch (error) {
+        return json(400, { error: error.message });
+      }
+      const candidatesChanged = JSON.stringify(candidates) !== JSON.stringify(current.candidates);
+      if (currentStatus === 'open' && candidatesChanged) {
+        return json(409, { error: 'Data calon tidak dapat diubah ketika pemungutan suara sedang dibuka. Tutup pemilihan terlebih dahulu.' });
+      }
+      if (nextStatus === 'open') {
+        if (!pool) return json(503, { error: 'DATABASE_URL belum dikonfigurasi. Pemilihan tidak dapat dibuka.' });
+        if (!isCompleteCandidates(candidates)) {
+          return json(400, { error: 'Lengkapi nama dan unggah foto untuk dua calon Ketua serta dua calon Wakil sebelum membuka pemilihan.' });
+        }
+      }
+
+      const next = {
+        ...current,
+        title: String(body.title ?? current.title).slice(0, 160),
+        institution: String(body.institution ?? current.institution).slice(0, 160),
+        period: String(body.period ?? current.period).slice(0, 80),
+        tagline: String(body.tagline ?? current.tagline).slice(0, 220),
+        candidates,
+        status: nextStatus
+      };
+
+      if (pool && nextStatus !== 'open') await setControlStatus(nextStatus);
+      await stores.config().setJSON('v2/main', next);
+      if (pool && nextStatus === 'open') await setControlStatus('open');
+      if (pool) await writeAudit('election.config.updated', null, { status: nextStatus, candidatesChanged });
+      return json(200, { ok: true, config: next, databaseConfigured: Boolean(pool) });
+    }
+
+    if (method === 'POST' && route === '/admin/users/add') {
+      const result = await addUser(parseBody(event));
+      if (!result.ok) return json(result.duplicate ? 409 : 400, { error: result.error });
+      if (pool) await writeAudit('voter.created', result.id, {});
+      return json(200, { ok: true, id: result.id });
+    }
+
+    if (method === 'POST' && route === '/admin/users/bulk') {
+      const body = parseBody(event);
+      const rows = Array.isArray(body.rows) ? body.rows.slice(0, 5000) : [];
+      let added = 0;
+      const skipped = [];
+      for (const row of rows) {
+        try {
+          const result = await addUser(row || {});
+          if (result.ok) added += 1;
+          else skipped.push({ username: String(row?.username || ''), reason: result.error });
+        } catch {
+          skipped.push({ username: String(row?.username || ''), reason: 'Gagal menyimpan.' });
+        }
+      }
+      if (pool) await writeAudit('voter.bulk_import', null, { added, skipped: skipped.length });
+      return json(200, { ok: true, added, skipped });
+    }
+
+    if (method === 'POST' && route === '/admin/users/update') {
+      const body = parseBody(event);
+      const id = String(body.id || '');
+      const user = await getUserById(id);
+      if (!user) return json(404, { error: 'Pemilih tidak ditemukan.' });
+      const name = String(body.name || '').trim();
+      const password = String(body.password || '');
+      if (!name) return json(400, { error: 'Nama lengkap tidak boleh kosong.' });
+      if (password && password.length < 4) return json(400, { error: 'Password minimal 4 karakter.' });
+      const next = { ...user, name, updatedAt: new Date().toISOString() };
+      if (password) next.passwordHash = hashPassword(password);
+      await stores.users().setJSON('user/' + id, next);
+      if (pool) await writeAudit('voter.updated', id, { nameChanged: name !== user.name, passwordChanged: Boolean(password) });
+      return json(200, { ok: true });
+    }
+
+    if (method === 'POST' && (route === '/admin/users/deactivate' || route === '/admin/users/delete')) {
+      const body = parseBody(event);
+      const id = String(body.id || '');
+      const user = await getUserById(id);
+      if (!user) return json(404, { error: 'Pemilih tidak ditemukan.' });
+      if (!pool) return json(503, { error: 'Database pemilihan belum terhubung; status hak pilih tidak dapat diverifikasi.' });
+      await ensureSchema();
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query(
+          'INSERT INTO evoting_v2_eligibility (election_id,voter_id,active) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
+          [ELECTION_ID, id, user.active !== false]
+        );
+        await client.query(
+          'SELECT active FROM evoting_v2_eligibility WHERE election_id=$1 AND voter_id=$2 FOR UPDATE',
+          [ELECTION_ID, id]
+        );
+        const participation = await client.query(
+          'SELECT voter_id FROM evoting_v2_participation WHERE election_id=$1 AND voter_id=$2',
+          [ELECTION_ID, id]
+        );
+        if (participation.rows.length) {
+          await client.query('ROLLBACK');
+          return json(409, { error: 'Akun yang sudah memilih tidak dapat dinonaktifkan.' });
+        }
+        await client.query(
+          'UPDATE evoting_v2_eligibility SET active=FALSE,updated_at=NOW() WHERE election_id=$1 AND voter_id=$2',
+          [ELECTION_ID, id]
+        );
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw error;
+      } finally {
+        client.release();
+      }
+      await stores.users().setJSON('user/' + id, { ...user, active: false, deactivatedAt: new Date().toISOString() });
+      await writeAudit('voter.deactivated', id, { username: user.username });
+      return json(200, { ok: true, message: 'Akun dinonaktifkan; data akun tetap disimpan.' });
+    }
+
+    if (method === 'POST' && route === '/admin/users/activate') {
+      const body = parseBody(event);
+      const id = String(body.id || '');
+      const user = await getUserById(id);
+      if (!user) return json(404, { error: 'Pemilih tidak ditemukan.' });
+      if (!pool) return json(503, { error: 'Database pemilihan belum terhubung.' });
+      await ensureSchema();
+      await pool.query(
+        'INSERT INTO evoting_v2_eligibility (election_id,voter_id,active) VALUES ($1,$2,TRUE) ' +
+        'ON CONFLICT (election_id,voter_id) DO UPDATE SET active=TRUE,updated_at=NOW()',
+        [ELECTION_ID, id]
+      );
+      await stores.users().setJSON('user/' + id, { ...user, active: true, reactivatedAt: new Date().toISOString() });
+      await writeAudit('voter.activated', id, { username: user.username });
+      return json(200, { ok: true });
+    }
+
+    if (method === 'POST' && route === '/admin/legacy-archive') {
+      const manifest = await archiveLegacyData();
+      if (pool) await writeAudit('legacy_trial.archived', manifest.backupId, {
+        voterLockRecordsCopied: manifest.voterLockRecordsCopied,
+        ballotRecordsCopied: manifest.ballotRecordsCopied
+      });
+      return json(200, { ok: true, manifest });
+    }
+
+    if (method === 'POST' && route === '/admin/reset-practice') {
+      if (!pool) return json(503, { error: 'Database pemilihan belum terhubung.' });
+      await ensureSchema();
+      const client = await pool.connect();
+      const archiveId = crypto.randomUUID();
+      try {
+        await client.query('BEGIN');
+        const control = await client.query(
+          'SELECT status FROM evoting_v2_election_control WHERE election_id=$1 FOR UPDATE',
+          [ELECTION_ID]
+        );
+        if (control.rows[0]?.status === 'open') {
+          await client.query('ROLLBACK');
+          return json(409, { error: 'Tutup pemilihan terlebih dahulu sebelum reset.' });
+        }
+        await client.query(
+          'INSERT INTO evoting_v2_ballot_archive (archive_id,election_id,ballot_id,chair_candidate_id,vice_candidate_id,voted_at) ' +
+          'SELECT $1,election_id,ballot_id,chair_candidate_id,vice_candidate_id,voted_at FROM evoting_v2_ballots WHERE election_id=$2',
+          [archiveId, ELECTION_ID]
+        );
+        await client.query(
+          'INSERT INTO evoting_v2_participation_archive (archive_id,election_id,voter_id,voted_at) ' +
+          'SELECT $1,election_id,voter_id,voted_at FROM evoting_v2_participation WHERE election_id=$2',
+          [archiveId, ELECTION_ID]
+        );
+        await client.query('DELETE FROM evoting_v2_ballots WHERE election_id=$1', [ELECTION_ID]);
+        await client.query('DELETE FROM evoting_v2_participation WHERE election_id=$1', [ELECTION_ID]);
+        await client.query(
+          'UPDATE evoting_v2_election_control SET status=$1,updated_at=NOW() WHERE election_id=$2',
+          ['scheduled', ELECTION_ID]
+        );
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw error;
+      } finally {
+        client.release();
+      }
+      const config = await getV2Config();
+      await stores.config().setJSON('v2/main', { ...config, status: 'scheduled' });
+      await writeAudit('election.reset_archived', archiveId, {});
+      return json(200, { ok: true, archiveId, message: 'Data pemilihan v2 diarsipkan dan direset. Akun pemilih tetap tersimpan.' });
+    }
+
+    if (method === 'GET' && route === '/admin/audit') {
+      if (!pool) return json(503, { error: 'Database pemilihan belum terhubung.' });
+      await ensureSchema();
+      const result = await pool.query(
+        'SELECT id,actor,action,target_id,details,created_at FROM evoting_v2_admin_audit WHERE election_id=$1 ORDER BY id DESC LIMIT 150',
+        [ELECTION_ID]
+      );
+      return json(200, { entries: result.rows });
+    }
+
+    if (method === 'POST' && route === '/admin/password') {
+      const body = parseBody(event);
+      const admin = await ensureAdmin();
+      const oldPassword = String(body.oldPassword || '');
+      const newPassword = String(body.newPassword || '');
+      if (!verifyPassword(oldPassword, admin.passwordHash)) return json(403, { error: 'Password admin lama salah.' });
+      if (newPassword.length < 8) return json(400, { error: 'Password admin baru minimal 8 karakter.' });
+      const next = { ...admin, passwordHash: hashPassword(newPassword), updatedAt: new Date().toISOString() };
+      await stores.admins().setJSON('main', next);
+      if (pool) await writeAudit('admin.password_changed', 'admin', {});
+      await destroySession(event);
+      return json(200, { ok: true }, { 'set-cookie': sessionCookie(event, '', 0) });
+    }
+
+    return json(404, { error: 'Endpoint tidak ditemukan.' });
+  } catch (error) {
+    console.error('E-Voting v2 API error:', error);
+    return json(500, { error: 'Terjadi kesalahan server. Silakan coba kembali atau hubungi administrator.' });
+  }
+}
+
+export const handler = async event => handleEvent(event);

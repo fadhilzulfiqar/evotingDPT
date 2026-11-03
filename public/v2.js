@@ -193,7 +193,8 @@
         body: JSON.stringify({
           chairCandidateId: selectedChair,
           viceCandidateId: selectedVice,
-          idempotencyKey: getSubmissionKey()
+          idempotencyKey: getSubmissionKey(),
+          configVersion: Number(config.configVersion || 1)
         })
       });
       showDone();

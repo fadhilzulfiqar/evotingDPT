@@ -43,6 +43,7 @@ Sebelum cutover:
 4. Backend membandingkan sumber sebelum/sesudah penyalinan, membaca ulang setiap objek arsip, dan memverifikasi manifest.
 5. Data asli di `evoting-config` dan `evoting-votes` tidak dihapus.
 6. Data akun tetap berada di store asal; jumlah akun yang dipertahankan dicatat pada manifest.
+7. Sebelum V2 dibuka di Production Context, backend membandingkan ulang konfigurasi dan record V1 dengan snapshot. Jika V1 berubah setelah backup, backup dianggap kedaluwarsa dan harus dibuat ulang.
 
 Arsip legacy dapat memuat struktur V1 yang mengandung hubungan internal voter-lock dengan pilihan. Arsip hanya untuk preservasi, tidak ditampilkan melalui API dashboard atau ekspor, dan harus dibatasi aksesnya pada akun/layanan Netlify.
 

@@ -454,6 +454,38 @@ async function getAdminStats() {
   };
 }
 
+async function verifyLegacyArchiveStillCurrent(manifest) {
+  if (!manifest?.backupId || manifest.snapshotVerified !== true || manifest.archiveReadbackVerified !== true) return false;
+  const configStore = stores.config();
+  const votesStore = stores.votes();
+  const archiveStore = stores.legacyArchive();
+  const [currentConfig, voterEntries, ballotEntries, archivedEntries] = await Promise.all([
+    configStore.get('main', { type: 'json', consistency: 'strong' }),
+    votesStore.list({ prefix: 'voter/' }),
+    votesStore.list({ prefix: 'ballot/' }),
+    archiveStore.list({ prefix: manifest.backupId + '/votes/' })
+  ]);
+  if (currentConfig?.status === 'open') return false;
+  const archivedConfig = await archiveStore.get(manifest.backupId + '/legacy-config', { type: 'json', consistency: 'strong' });
+  if (JSON.stringify(currentConfig) !== JSON.stringify(archivedConfig)) return false;
+  const currentVoterKeys = (voterEntries.blobs || []).map(entry => entry.key).sort();
+  const currentBallotKeys = (ballotEntries.blobs || []).map(entry => entry.key).sort();
+  const archivedVotePrefix = manifest.backupId + '/votes/';
+  const archivedVoteKeys = (archivedEntries.blobs || []).map(entry => entry.key.slice(archivedVotePrefix.length)).sort();
+  const expectedKeys = [...currentVoterKeys, ...currentBallotKeys].sort();
+  if (JSON.stringify(expectedKeys) !== JSON.stringify(archivedVoteKeys)) return false;
+  if (currentVoterKeys.length !== Number(manifest.voterLockRecordsCopied)
+      || currentBallotKeys.length !== Number(manifest.ballotRecordsCopied)) return false;
+  const comparisons = await Promise.all(expectedKeys.map(async key => {
+    const [current, archived] = await Promise.all([
+      votesStore.get(key, { type: 'json', consistency: 'strong' }),
+      archiveStore.get(archivedVotePrefix + key, { type: 'json', consistency: 'strong' })
+    ]);
+    return JSON.stringify(current) === JSON.stringify(archived);
+  }));
+  return comparisons.every(Boolean);
+}
+
 async function getLatestLegacyArchiveManifest() {
   const archiveStore = stores.legacyArchive();
   const entries = await archiveStore.list({ prefix: 'legacy-trial-' });
@@ -464,7 +496,8 @@ async function getLatestLegacyArchiveManifest() {
     .reverse();
   for (const key of manifestKeys) {
     const manifest = await archiveStore.get(key, { type: 'json', consistency: 'strong' });
-    if (manifest?.snapshotVerified === true && manifest?.archiveReadbackVerified === true) return manifest;
+    if (manifest?.snapshotVerified === true && manifest?.archiveReadbackVerified === true
+        && await verifyLegacyArchiveStillCurrent(manifest)) return manifest;
   }
   return null;
 }

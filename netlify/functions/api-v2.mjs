@@ -489,10 +489,10 @@ async function verifyLegacyArchiveStillCurrent(manifest) {
     votesStore.list({ prefix: 'voter/' }),
     votesStore.list({ prefix: 'ballot/' })
   ]);
-  const signature = entries => (entries || []).map(entry => entry.key).sort().join('|');
+  const sortedKeys = entries => (entries || []).map(entry => entry.key).sort();
   return JSON.stringify(finalConfig) === JSON.stringify(currentConfig)
-    && signature(finalVoters.blobs) === JSON.stringify(currentVoterKeys)
-    && signature(finalBallots.blobs) === JSON.stringify(currentBallotKeys);
+    && JSON.stringify(sortedKeys(finalVoters.blobs)) === JSON.stringify(currentVoterKeys)
+    && JSON.stringify(sortedKeys(finalBallots.blobs)) === JSON.stringify(currentBallotKeys);
 }
 
 async function getLatestLegacyArchiveManifest() {

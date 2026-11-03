@@ -7,9 +7,11 @@
 - API v2: `/api/v2/*`
 - API dan halaman lama tidak diganti oleh branch ini.
 
-## Jalur utama setelah cutover
+## Rilis dua tahap
 
-Setelah branch dipromosikan ke production, `/` dan `/index.html` diarahkan ke `/v2`, sedangkan `/admin`, `/admin/`, dan `/admin.html` diarahkan ke `/admin-v2`. API v1 dibuat read-only: endpoint suara lama mengembalikan HTTP 410 dan mutasi admin lama ditolak. Data lama tetap berada di store asal serta dapat diarsipkan melalui menu admin v2.
+**Tahap 1 — pre-backup:** branch ini hanya menambahkan `/v2`, `/admin-v2`, dan `/api/v2/*`. Halaman utama, `/admin`, dan API v1 tetap berjalan seperti semula. Tidak ada redirect cutover dan tidak ada data lama yang diubah.
+
+**Tahap 2 — cutover:** hanya setelah backup legacy berhasil dan manifest diverifikasi, terapkan rilis terpisah yang mengarahkan `/` serta `/index.html` ke `/v2`, mengarahkan `/admin` serta `/admin.html` ke `/admin-v2`, dan membuat API v1 read-only. Jangan jalankan tahap 2 sebelum backup terverifikasi.
 
 ## Database wajib untuk membuka pemilihan
 
@@ -43,13 +45,14 @@ Script membuat akun uji baru, login bersamaan, lalu mengirim 100 surat suara sec
 
 ## Backup legacy sebelum cutover
 
-Setelah branch v2 lolos pengujian dan kode dipromosikan ke production:
+Setelah rilis tahap 1 dipromosikan ke production (halaman utama lama masih tetap aktif):
 
 1. Buka `/admin-v2` pada domain production.
 2. Masuk menggunakan akun admin yang sama.
 3. Buka menu Keamanan & Arsip.
 4. Jalankan **Buat backup data trial lama**.
 5. Pastikan notifikasi menampilkan backup ID dan jumlah record voter-lock serta ballot yang disalin.
+6. Verifikasi backup ID dan jumlah record sebelum menyetujui rilis tahap 2 (cutover).
 
 Backup legacy hanya diizinkan pada Netlify Production Context. Data asli pada `evoting-config` dan `evoting-votes` tidak dihapus. Arsip bersifat privat karena struktur voter-lock lama dapat mengandung hubungan internal antara akun dan pilihan.
 

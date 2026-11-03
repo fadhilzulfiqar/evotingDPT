@@ -11,8 +11,8 @@
   async function api(path, options = {}) {
     const response = await fetch('/api/v2' + path, {
       credentials: 'same-origin',
-      headers: { 'content-type': 'application/json', ...(options.headers || {}) },
-      ...options
+      ...options,
+      headers: { 'content-type': 'application/json', ...(options.headers || {}) }
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || 'Permintaan tidak dapat diproses.');
@@ -33,6 +33,9 @@
     const setup = stats.setupRequired;
     let html = heading('RINGKASAN PEMILIHAN', 'Dashboard utama', 'Pantau partisipasi pemilih dan kesiapan pemungutan suara.');
     if (setup) html += '<div class="notice-error">PostgreSQL belum terhubung. Data calon dan akun dapat disiapkan, tetapi pemilihan tidak dapat dibuka sebelum DATABASE_URL dikonfigurasi pada Netlify.</div>';
+    if (!setup && stats.reconciliationOk === false) {
+      html += '<div class="notice-error">PERINGATAN INTEGRITAS: jumlah surat suara Ketua, Wakil, dan catatan partisipasi tidak sama. Hentikan pemilihan dan periksa audit database sebelum melanjutkan.</div>';
+    }
     html += '<div class="admin-content-grid">';
     html += statCard('TOTAL AKUN', stats.total, 'Seluruh akun terdaftar');
     html += statCard('AKUN AKTIF', stats.activeTotal, 'Memiliki hak untuk login');
@@ -130,6 +133,7 @@
     if (stats.setupRequired) html += '<div class="notice-error">Rekap belum tersedia karena PostgreSQL belum dikonfigurasi.</div>';
     else if (!stats.resultsVisible) html += '<div class="notice-error">Perolehan suara setiap calon disembunyikan selama pemungutan suara berlangsung untuk mengurangi potensi bias. Status partisipasi pemilih tetap dapat dipantau. Rekap akan dibuka setelah admin menutup pemilihan.</div>';
     else {
+      if (stats.reconciliationOk === false) html += '<div class="notice-error">PERINGATAN INTEGRITAS: total surat suara dan partisipasi tidak cocok. Jangan tetapkan hasil sebelum pemeriksaan selesai.</div>';
       html += '<div class="admin-content-grid">' + statCard('TOTAL SURAT SUARA', stats.totalBallots, 'Satu surat suara berisi pilihan dua jabatan') + statCard('SUDAH MEMILIH', stats.voted, 'Akun pemilih aktif') + statCard('BELUM MEMILIH', stats.remaining, 'Akun pemilih aktif') + '</div>';
       html += renderResultGroup('ketua', stats.config.candidates.ketua, stats.chairCounts);
       html += renderResultGroup('wakil', stats.config.candidates.wakil, stats.viceCounts);
@@ -151,13 +155,36 @@
     $('#adminContent').innerHTML = html;
   }
 
+  async function loadLegacyArchiveStatus() {
+    const target = $('#legacyBackupStatus');
+    if (!target) return;
+    try {
+      const result = await api('/admin/legacy-archive/status');
+      if (!result.available) {
+        target.innerHTML = '<span class="status-pill pending">BELUM ADA BACKUP TERVERIFIKASI</span><p class="inline-note">Pada production, backup trial V1 wajib dibuat sebelum pemilihan V2 dibuka.</p>';
+        return;
+      }
+      const manifest = result.manifest;
+      target.innerHTML = '<span class="status-pill done">BACKUP TERVERIFIKASI</span><p class="inline-note">ID: ' + esc(manifest.backupId) +
+        '<br>Waktu: ' + esc(new Date(manifest.createdAt).toLocaleString('id-ID')) +
+        '<br>Voter-lock: ' + esc(manifest.voterLockRecordsCopied) +
+        ' · Ballot: ' + esc(manifest.ballotRecordsCopied) +
+        ' · Akun lama dipertahankan: ' + esc(manifest.legacyUserRecordsRetained) +
+        '<br>Snapshot: ' + (manifest.snapshotVerified ? 'OK' : 'GAGAL') +
+        ' · Read-back arsip: ' + (manifest.archiveReadbackVerified ? 'OK' : 'GAGAL') + '</p>';
+    } catch (error) {
+      target.textContent = 'Status backup belum dapat diperiksa: ' + error.message;
+    }
+  }
+
   function renderSettings() {
     let html = heading('PENGATURAN SISTEM', 'Keamanan dan arsip', 'Kelola kredensial administrator, arsip data uji coba lama, dan reset pemilihan v2.');
     html += '<section class="admin-panel"><div class="eyebrow">KREDENSIAL ADMIN</div><h2>Ganti password admin</h2><div class="admin-form-grid"><label>Password saat ini<input id="oldAdminPassword" type="password" autocomplete="current-password"></label><label>Password baru<input id="newAdminPassword" type="password" autocomplete="new-password" minlength="8"></label></div><div class="admin-actions"><button class="small-button gold" type="button" onclick="window.EvotingAdmin.changePassword()">Ganti password</button></div></section>';
-    html += '<section class="admin-panel"><div class="eyebrow">PRESERVASI DATA LAMA</div><h2>Arsipkan data trial v1</h2><p>Menyalin konfigurasi lama serta record surat suara trial dari Netlify Blobs ke store arsip privat. Data sumber tidak dihapus. Akun pemilih tetap berada di penyimpanan semula. Sebelum backup, tutup pemilihan trial lama melalui <a href="/admin" target="_blank" rel="noopener">dashboard admin lama</a>. Backend akan menolak backup jika status lama masih OPEN atau datanya berubah selama proses.</p><div class="notice-error">Arsip legacy dapat memuat struktur internal lama yang menghubungkan voter-lock dengan pilihan. Isi arsip tidak akan ditampilkan pada dashboard atau ekspor.</div><div class="admin-actions"><button class="small-button gold" type="button" onclick="window.EvotingAdmin.archiveLegacy()">Buat backup data trial lama</button></div></section>';
+    html += '<section class="admin-panel"><div class="eyebrow">PRESERVASI DATA LAMA</div><h2>Arsipkan data trial v1</h2><div id="legacyBackupStatus" class="inline-note">Memeriksa status backup...</div><p>Menyalin konfigurasi lama serta record surat suara trial dari Netlify Blobs ke store arsip privat. Data sumber tidak dihapus. Akun pemilih tetap berada di penyimpanan semula. Sebelum backup, tutup pemilihan trial lama melalui <a href="/admin" target="_blank" rel="noopener">dashboard admin lama</a>. Backend akan menolak backup jika status lama masih OPEN atau datanya berubah selama proses.</p><div class="notice-error">Arsip legacy dapat memuat struktur internal lama yang menghubungkan voter-lock dengan pilihan. Isi arsip tidak akan ditampilkan pada dashboard atau ekspor.</div><div class="admin-actions"><button class="small-button gold" type="button" onclick="window.EvotingAdmin.archiveLegacy()">Buat backup data trial lama</button></div></section>';
     html += '<section class="admin-panel"><div class="eyebrow">RESET PEMILIHAN V2</div><h2>Reset dengan arsip otomatis</h2><p>Hanya dapat dilakukan setelah pemilihan ditutup. Sebelum menghapus data aktif v2, backend menyalin surat suara dan status partisipasi ke tabel arsip PostgreSQL. Akun pemilih tidak dihapus.</p><div class="admin-actions"><button class="small-button warn" type="button" onclick="window.EvotingAdmin.resetElection()">Arsipkan dan reset v2</button></div></section>';
     html += '<section class="admin-panel"><div class="eyebrow">STATUS INFRASTRUKTUR</div><h2>Koneksi penyimpanan</h2><p>Database suara: <b>' + (stats.setupRequired ? 'Belum terhubung' : 'PostgreSQL') + '</b><br>Data akun, sesi, foto, dan konfigurasi: <b>Netlify Blobs</b><br>Lingkungan aplikasi: <b>v2 independent ballot</b></p></section>';
     $('#adminContent').innerHTML = html;
+    loadLegacyArchiveStatus();
   }
 
   function renderTab(tab) {

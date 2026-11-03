@@ -716,7 +716,7 @@ async function handleEvent(event) {
       if (!name) return json(400, { error: 'Nama lengkap tidak boleh kosong.' });
       if (password && password.length < 4) return json(400, { error: 'Password minimal 4 karakter.' });
       const next = { ...user, name, updatedAt: new Date().toISOString() };
-      if (password) next.passwordHash = hashPassword(password);
+      if (password) next.passwordHash = await hashPassword(password);
       await stores.users().setJSON('user/' + id, next);
       if (pool) await writeAudit('voter.updated', id, { nameChanged: name !== user.name, passwordChanged: Boolean(password) });
       return json(200, { ok: true });

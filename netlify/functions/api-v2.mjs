@@ -23,7 +23,7 @@ const DEFAULT_CONFIG = {
   title: 'Pemilihan Ketua dan Wakil Ketua DPT',
   institution: 'Politeknik Agraria STPN',
   period: '2026–2027',
-  tagline: 'SATU SUARA UNTUK MASA DEPAN DPT',
+  tagline: 'Pemimpin Parlemen DPT Periode 2026–2027',
   status: 'scheduled',
   candidates: {
     ketua: [
@@ -179,8 +179,8 @@ async function ensureSchema() {
         'CREATE TABLE IF NOT EXISTS evoting_v2_participation (' +
         'election_id TEXT NOT NULL, voter_id TEXT NOT NULL, voted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (election_id, voter_id));\n' +
         'CREATE TABLE IF NOT EXISTS evoting_v2_ballots (' +
-        'ballot_id UUID PRIMARY KEY, election_id TEXT NOT NULL, idempotency_key UUID NOT NULL, chair_candidate_id TEXT NOT NULL, vice_candidate_id TEXT NOT NULL, voted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE (election_id, idempotency_key));\n' +
-        'CREATE INDEX IF NOT EXISTS evoting_v2_ballots_election_idx ON evoting_v2_ballots (election_id);\n' +
+        'ballot_id UUID PRIMARY KEY, election_id TEXT NOT NULL, idempotency_key UUID NOT NULL, chair_candidate_id TEXT NOT NULL CHECK (chair_candidate_id IN (\'K01\',\'K02\')), vice_candidate_id TEXT NOT NULL CHECK (vice_candidate_id IN (\'W01\',\'W02\')), voted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE (election_id, idempotency_key));\n' +
+        'CREATE INDEX IF NOT EXISTS evoting_v2_ballots_election_idx ON evoting_v2_ballots (election_id);\n' +\n        'DO $ BEGIN ALTER TABLE evoting_v2_ballots ADD CONSTRAINT evoting_v2_ballots_chair_check CHECK (chair_candidate_id IN (\'K01\',\'K02\')); EXCEPTION WHEN duplicate_object THEN NULL; END $;\n' +\n        'DO $ BEGIN ALTER TABLE evoting_v2_ballots ADD CONSTRAINT evoting_v2_ballots_vice_check CHECK (vice_candidate_id IN (\'W01\',\'W02\')); EXCEPTION WHEN duplicate_object THEN NULL; END $;\n' +
         'CREATE TABLE IF NOT EXISTS evoting_v2_ballot_archive (' +
         'archive_id UUID NOT NULL, election_id TEXT NOT NULL, ballot_id UUID NOT NULL, chair_candidate_id TEXT NOT NULL, vice_candidate_id TEXT NOT NULL, voted_at TIMESTAMPTZ NOT NULL, archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (archive_id, ballot_id));\n' +
         'CREATE TABLE IF NOT EXISTS evoting_v2_participation_archive (' +
@@ -318,7 +318,7 @@ function normalizeCandidateGroup(items, prefix) {
     id: prefix + '0' + (index + 1),
     number: '0' + (index + 1),
     name: String(item?.name || '').trim().slice(0, 120),
-    photo: String(item?.photo || '').slice(0, 1_250_000)
+    photo: String(item?.photo || '')
   }));
 }
 
@@ -328,7 +328,8 @@ function isCompleteCandidates(candidates) {
     candidates[role].length === 2 &&
     candidates[role].every(candidate =>
       candidate.name.length > 1 &&
-      /^data:image\/(png|jpeg|jpg|webp);base64,/i.test(candidate.photo)
+      candidate.photo.length <= 1_250_000 &&
+      /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/i.test(candidate.photo)
     )
   );
 }
@@ -367,10 +368,12 @@ async function getAdminStats() {
   }
 
   await ensureSchema();
-  for (const user of users) {
+  if (users.length) {
     await pool.query(
-      'INSERT INTO evoting_v2_eligibility (election_id, voter_id, active) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
-      [ELECTION_ID, user.id, user.active !== false]
+      'INSERT INTO evoting_v2_eligibility (election_id,voter_id,active) ' +
+      'SELECT $1, source.voter_id, source.active FROM UNNEST($2::text[],$3::boolean[]) AS source(voter_id,active) ' +
+      'ON CONFLICT (election_id,voter_id) DO NOTHING',
+      [ELECTION_ID, users.map(user => user.id), users.map(user => user.active !== false)]
     );
   }
 
@@ -412,6 +415,9 @@ async function getAdminStats() {
   const activeTotal = safeUsers.filter(user => user.active).length;
   const voted = safeUsers.filter(user => user.active && user.hasVoted).length;
   const totalBallots = Object.values(chairCounts).reduce((sum, value) => sum + value, 0);
+  const viceBallotTotal = Object.values(viceCounts).reduce((sum, value) => sum + value, 0);
+  const participationTotal = participationResult.rows.length;
+  const reconciliationOk = totalBallots === viceBallotTotal && totalBallots === participationTotal;
   const electionStatus = controlResult.rows[0]?.status || 'scheduled';
   const resultsVisible = electionStatus !== 'open';
   return {
@@ -425,14 +431,31 @@ async function getAdminStats() {
     viceCounts: resultsVisible ? viceCounts : null,
     totalBallots: resultsVisible ? totalBallots : null,
     resultsVisible,
+    reconciliationOk,
     users: safeUsers,
     config: { ...config, status: electionStatus, configVersion: Math.max(Number(config.configVersion || 1), Number(controlResult.rows[0]?.config_version || 1)) },
     database: 'postgresql'
   };
 }
 
+async function getLatestLegacyArchiveManifest() {
+  const archiveStore = stores.legacyArchive();
+  const entries = await archiveStore.list({ prefix: 'legacy-trial-' });
+  const manifestKeys = (entries.blobs || [])
+    .map(entry => entry.key)
+    .filter(key => key.endsWith('/manifest'))
+    .sort()
+    .reverse();
+  for (const key of manifestKeys) {
+    const manifest = await archiveStore.get(key, { type: 'json', consistency: 'strong' });
+    if (manifest?.snapshotVerified === true && manifest?.archiveReadbackVerified === true) return manifest;
+  }
+  return null;
+}
+
 async function archiveLegacyData() {
   const configStore = stores.config();
+  const usersStore = stores.users();
   const votesStore = stores.votes();
   const archiveStore = stores.legacyArchive();
   const backupId = 'legacy-trial-' + new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14) + '-' + crypto.randomBytes(3).toString('hex');
@@ -443,8 +466,14 @@ async function archiveLegacyData() {
     throw error;
   }
 
-  const voterKeys = (await votesStore.list({ prefix: 'voter/' })).blobs || [];
-  const ballotKeys = (await votesStore.list({ prefix: 'ballot/' })).blobs || [];
+  const [voterKeysResult, ballotKeysResult, userKeysResult] = await Promise.all([
+    votesStore.list({ prefix: 'voter/' }),
+    votesStore.list({ prefix: 'ballot/' }),
+    usersStore.list({ prefix: 'user/' })
+  ]);
+  const voterKeys = voterKeysResult.blobs || [];
+  const ballotKeys = ballotKeysResult.blobs || [];
+  const userAccountCount = (userKeysResult.blobs || []).length;
   const voterSnapshot = [];
   const ballotSnapshot = [];
 
@@ -465,15 +494,17 @@ async function archiveLegacyData() {
     }
   }
 
-  const [configAfter, voterKeysAfter, ballotKeysAfter] = await Promise.all([
+  const [configAfter, voterKeysAfter, ballotKeysAfter, userKeysAfter] = await Promise.all([
     configStore.get('main', { type: 'json', consistency: 'strong' }),
     votesStore.list({ prefix: 'voter/' }),
-    votesStore.list({ prefix: 'ballot/' })
+    votesStore.list({ prefix: 'ballot/' }),
+    usersStore.list({ prefix: 'user/' })
   ]);
   const keySignature = entries => (entries || []).map(entry => entry.key).sort().join('|');
   let stable = JSON.stringify(configAfter) === JSON.stringify(oldConfig)
     && keySignature(voterKeysAfter.blobs) === keySignature(voterKeys)
-    && keySignature(ballotKeysAfter.blobs) === keySignature(ballotKeys);
+    && keySignature(ballotKeysAfter.blobs) === keySignature(ballotKeys)
+    && keySignature(userKeysAfter.blobs) === keySignature(userKeysResult.blobs);
 
   if (stable) {
     for (const item of voterSnapshot) {
@@ -493,6 +524,31 @@ async function archiveLegacyData() {
     throw error;
   }
 
+  // Read every copied object back from the archive store before marking the
+  // backup verified. A source-stability check alone is not proof of a good copy.
+  let archiveReadbackVerified = true;
+  if (oldConfig) {
+    const copiedConfig = await archiveStore.get(backupId + '/legacy-config', { type: 'json', consistency: 'strong' });
+    archiveReadbackVerified = JSON.stringify(copiedConfig) === JSON.stringify(oldConfig);
+  }
+  if (archiveReadbackVerified) {
+    for (const item of voterSnapshot) {
+      const copied = await archiveStore.get(backupId + '/votes/' + item.key, { type: 'json', consistency: 'strong' });
+      if (JSON.stringify(copied) !== JSON.stringify(item.value)) { archiveReadbackVerified = false; break; }
+    }
+  }
+  if (archiveReadbackVerified) {
+    for (const item of ballotSnapshot) {
+      const copied = await archiveStore.get(backupId + '/votes/' + item.key, { type: 'json', consistency: 'strong' });
+      if (JSON.stringify(copied) !== JSON.stringify(item.value)) { archiveReadbackVerified = false; break; }
+    }
+  }
+  if (!archiveReadbackVerified) {
+    const error = new Error('Salinan arsip tidak lolos verifikasi baca-ulang. Data sumber tetap dipertahankan; ulangi backup setelah memeriksa penyimpanan.');
+    error.code = 'LEGACY_ARCHIVE_VERIFY_FAILED';
+    throw error;
+  }
+
   const manifest = {
     backupId,
     type: 'legacy-trial-preservation',
@@ -500,13 +556,32 @@ async function archiveLegacyData() {
     legacyConfigCopied: Boolean(oldConfig),
     voterLockRecordsCopied: voterSnapshot.length,
     ballotRecordsCopied: ballotSnapshot.length,
+    legacyUserRecordsRetained: userAccountCount,
     snapshotVerified: true,
+    archiveReadbackVerified: true,
     originalStoresRetained: true,
     voterAccountsRetainedInOriginalStore: true,
     note: 'Arsip privat untuk preservasi. Record voter-lock lama dapat memuat hubungan internal antara akun dan pilihan. Jangan tampilkan isi arsip pada dashboard atau ekspor publik.'
   };
-  await archiveStore.setJSON(backupId + '/manifest', manifest, { onlyIfNew: true });
+  const manifestKey = backupId + '/manifest';
+  await archiveStore.setJSON(manifestKey, manifest, { onlyIfNew: true });
+  const manifestReadback = await archiveStore.get(manifestKey, { type: 'json', consistency: 'strong' });
+  if (JSON.stringify(manifestReadback) !== JSON.stringify(manifest)) {
+    const error = new Error('Manifest backup tidak dapat diverifikasi. Data sumber tetap dipertahankan.');
+    error.code = 'LEGACY_MANIFEST_VERIFY_FAILED';
+    throw error;
+  }
   return manifest;
+}
+function isSameOriginRequest(event) {
+  const origin = String(event.headers?.origin || '');
+  if (!origin) return true; // Non-browser clients and local load-test runners.
+  const host = String(event.headers?.['x-forwarded-host'] || event.headers?.host || '').toLowerCase();
+  try {
+    return new URL(origin).host.toLowerCase() === host;
+  } catch {
+    return false;
+  }
 }
 
 async function handleEvent(event) {
@@ -517,6 +592,10 @@ async function handleEvent(event) {
   route = route || '/';
 
   try {
+    if (method !== 'GET' && method !== 'HEAD' && !isSameOriginRequest(event)) {
+      return json(403, { error: 'Permintaan lintas origin ditolak.' });
+    }
+
     if (method === 'GET' && route === '/health') {
       if (!pool) return json(503, { ok: false, database: 'not-configured', required: 'DATABASE_URL' });
       await ensureSchema();
@@ -695,6 +774,12 @@ async function handleEvent(event) {
         if (!isCompleteCandidates(candidates)) {
           return json(400, { error: 'Lengkapi nama dan unggah foto untuk dua calon Ketua serta dua calon Wakil sebelum membuka pemilihan.' });
         }
+        if (process.env.CONTEXT === 'production') {
+          const legacyBackup = await getLatestLegacyArchiveManifest();
+          if (!legacyBackup) {
+            return json(409, { error: 'Sebelum membuka pemilihan V2 di production, buat dan verifikasi backup data trial V1 pada menu Keamanan & Arsip.' });
+          }
+        }
       }
 
       const nextVersion = candidatesChanged ? currentVersion + 1 : currentVersion;
@@ -717,6 +802,7 @@ async function handleEvent(event) {
     }
 
     if (method === 'POST' && route === '/admin/users/add') {
+      if (pool && await getControlStatus() === 'open') return json(409, { error: 'Akun baru tidak dapat ditambahkan ketika pemilihan sedang berlangsung.' });
       const result = await addUser(parseBody(event));
       if (!result.ok) return json(result.duplicate ? 409 : 400, { error: result.error });
       if (pool) await writeAudit('voter.created', result.id, {});
@@ -724,6 +810,7 @@ async function handleEvent(event) {
     }
 
     if (method === 'POST' && route === '/admin/users/bulk') {
+      if (pool && await getControlStatus() === 'open') return json(409, { error: 'Impor akun baru tidak dapat dilakukan ketika pemilihan sedang berlangsung.' });
       const body = parseBody(event);
       const rows = Array.isArray(body.rows) ? body.rows.slice(0, 5000) : [];
       let added = 0;
@@ -800,6 +887,7 @@ async function handleEvent(event) {
     }
 
     if (method === 'POST' && route === '/admin/users/activate') {
+      if (pool && await getControlStatus() === 'open') return json(409, { error: 'Akun tidak dapat diaktifkan kembali ketika pemilihan sedang berlangsung.' });
       const body = parseBody(event);
       const id = String(body.id || '');
       const user = await getUserById(id);

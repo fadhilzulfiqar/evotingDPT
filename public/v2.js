@@ -17,8 +17,8 @@
   async function api(path, options = {}) {
     const response = await fetch('/api/v2' + path, {
       credentials: 'same-origin',
-      headers: { 'content-type': 'application/json', ...(options.headers || {}) },
-      ...options
+      ...options,
+      headers: { 'content-type': 'application/json', ...(options.headers || {}) }
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || 'Permintaan tidak dapat diproses.');
@@ -47,6 +47,13 @@
     $(view).classList.remove('hidden');
   }
 
+  function setSubmissionOverlay(visible) {
+    const overlay = $('#submissionOverlay');
+    if (!overlay) return;
+    overlay.classList.toggle('hidden', !visible);
+    document.body.setAttribute('aria-busy', visible ? 'true' : 'false');
+  }
+
   function candidateCard(candidate, role, selectedId) {
     const selected = candidate.id === selectedId;
     const photo = candidate.photo
@@ -71,6 +78,7 @@
   }
 
   function showDone() {
+    setSubmissionOverlay(false);
     showView('#doneView');
     $('#confirmModal').classList.add('hidden');
     sessionStorage.removeItem('evoting-v2-submit-key:' + (currentUser?.username || ''));
@@ -186,6 +194,8 @@
     const button = $('#sendVote');
     button.disabled = true;
     button.textContent = 'Mengirim suara...';
+    $('#reviewButton').disabled = true;
+    setSubmissionOverlay(true);
     feedback('#voteError', '');
     try {
       await api('/vote', {
@@ -206,9 +216,11 @@
       } catch (_) {}
     } finally {
       sending = false;
+      setSubmissionOverlay(false);
       if (!$('#doneView').classList.contains('hidden')) return;
       button.disabled = !$('#agree').checked;
       button.innerHTML = 'Kirim suara <span>→</span>';
+      $('#reviewButton').disabled = !selectedChair || !selectedVice;
     }
   }
 

@@ -8,25 +8,31 @@
 [[redirects]]
   from = "/"
   to = "/v2"
-  status = 301
+  status = 302
   force = true
 
 [[redirects]]
   from = "/index.html"
   to = "/v2"
-  status = 301
+  status = 302
   force = true
 
 [[redirects]]
   from = "/admin"
   to = "/admin-v2"
-  status = 301
+  status = 302
+  force = true
+
+[[redirects]]
+  from = "/admin/"
+  to = "/admin-v2"
+  status = 302
   force = true
 
 [[redirects]]
   from = "/admin.html"
   to = "/admin-v2"
-  status = 301
+  status = 302
   force = true
 
 [[redirects]]

@@ -7,6 +7,10 @@
 - API v2: `/api/v2/*`
 - API dan halaman lama tidak diganti oleh branch ini.
 
+## Jalur utama setelah cutover
+
+Setelah branch dipromosikan ke production, `/` dan `/index.html` diarahkan ke `/v2`, sedangkan `/admin`, `/admin/`, dan `/admin.html` diarahkan ke `/admin-v2`. API v1 dibuat read-only: endpoint suara lama mengembalikan HTTP 410 dan mutasi admin lama ditolak. Data lama tetap berada di store asal serta dapat diarsipkan melalui menu admin v2.
+
 ## Database wajib untuk membuka pemilihan
 
 Netlify Functions memakai PostgreSQL untuk transaksi suara. Tambahkan environment variable:

@@ -344,6 +344,8 @@ async function getAdminStats() {
       participation: null,
       chairCounts: { K01: 0, K02: 0 },
       viceCounts: { W01: 0, W02: 0 },
+      totalBallots: 0,
+      resultsVisible: true,
       users: users.map(user => ({
         id: user.id,
         name: user.name,
@@ -403,6 +405,8 @@ async function getAdminStats() {
   const activeTotal = safeUsers.filter(user => user.active).length;
   const voted = safeUsers.filter(user => user.active && user.hasVoted).length;
   const totalBallots = Object.values(chairCounts).reduce((sum, value) => sum + value, 0);
+  const electionStatus = controlResult.rows[0]?.status || 'scheduled';
+  const resultsVisible = electionStatus !== 'open';
   return {
     setupRequired: false,
     total: safeUsers.length,
@@ -410,11 +414,12 @@ async function getAdminStats() {
     voted,
     remaining: Math.max(0, activeTotal - voted),
     participation: activeTotal ? Math.round(voted / activeTotal * 1000) / 10 : 0,
-    chairCounts,
-    viceCounts,
-    totalBallots,
+    chairCounts: resultsVisible ? chairCounts : null,
+    viceCounts: resultsVisible ? viceCounts : null,
+    totalBallots: resultsVisible ? totalBallots : null,
+    resultsVisible,
     users: safeUsers,
-    config: { ...config, status: controlResult.rows[0]?.status || 'scheduled', configVersion: Math.max(Number(config.configVersion || 1), Number(controlResult.rows[0]?.config_version || 1)) },
+    config: { ...config, status: electionStatus, configVersion: Math.max(Number(config.configVersion || 1), Number(controlResult.rows[0]?.config_version || 1)) },
     database: 'postgresql'
   };
 }

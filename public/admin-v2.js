@@ -87,9 +87,9 @@
         : user.hasVoted ? '<span class="status-pill done">SUDAH MEMILIH</span>'
         : '<span class="status-pill pending">BELUM MEMILIH</span>';
       const actions = user.active
-        ? '<button class="small-button" type="button" onclick="window.EvotingAdmin.editUser(\'' + esc(user.id) + '\')">Edit</button> ' +
-          (user.hasVoted ? '<span class="inline-note">Hak suara digunakan</span>' : '<button class="small-button warn" type="button" onclick="window.EvotingAdmin.deactivateUser(\'' + esc(user.id) + '\')">Nonaktifkan</button>')
-        : '<button class="small-button" type="button" onclick="window.EvotingAdmin.activateUser(\'' + esc(user.id) + '\')">Aktifkan kembali</button>';
+        ? '<button class="small-button" type="button" onclick="window.EvotingAdmin.editUser(\\'' + esc(user.id) + '\\')">Edit</button> ' +
+          (user.hasVoted === null ? '<span class="inline-note">Menunggu database</span>' : user.hasVoted ? '<span class="inline-note">Hak suara digunakan</span>' : '<button class="small-button warn" type="button" onclick="window.EvotingAdmin.deactivateUser(\\'' + esc(user.id) + '\\')">Nonaktifkan</button>')
+        : '<button class="small-button" type="button" onclick="window.EvotingAdmin.activateUser(\\'' + esc(user.id) + '\\')">Aktifkan kembali</button>';
       html += '<tr><td>' + (index + 1) + '</td><td>' + esc(user.name) + '</td><td>' + esc(user.username) + '</td><td>' + state + '</td><td>' + (user.votedAt ? esc(new Date(user.votedAt).toLocaleString('id-ID')) : '—') + '</td><td>' + actions + '</td></tr>';
     });
     $('#voterRows').innerHTML = html || '<tr><td colspan="6">Tidak ada data pemilih.</td></tr>';
@@ -238,7 +238,7 @@
   }
 
   async function deactivateUser(id) {
-    const user = stats.users.find(item => item.id === id); if (!user || user.hasVoted) return;
+    const user = stats.users.find(item => item.id === id); if (!user || user.hasVoted !== false) return;
     if (!confirm('Nonaktifkan akun ' + user.name + ' (' + user.username + ')? Akun tidak dapat login, tetapi data tetap tersimpan dalam audit.')) return;
     try { await api('/admin/users/deactivate', { method:'POST', body:JSON.stringify({id}) }); await loadStats(); renderTab('voters'); feedback('Akun berhasil dinonaktifkan.', 'success'); }
     catch (error) { feedback(error.message); }

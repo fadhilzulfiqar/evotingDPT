@@ -280,7 +280,10 @@ async function handleEvent(event) {
   try {
     if (method === 'GET' && route === '/health') return json(200, { ok: true, storage: 'netlify-blobs' });
 
-    if (method === 'GET' && route === '/election') return json(200, await getConfig());
+    if (method === 'GET' && route === '/election') {
+      const legacyConfig = await getConfig();
+      return json(200, { ...legacyConfig, status: 'closed', legacyReadOnly: true, notice: 'Model pemilihan lama telah dihentikan. Gunakan portal pemilih v2.' });
+    }
 
     if (method === 'GET' && route === '/me') {
       const s = await requireSession(event, 'voter');
@@ -306,6 +309,10 @@ async function handleEvent(event) {
     }
 
     if (method === 'POST' && route === '/vote') {
+      return json(410, { error: 'Model pemilihan lama telah dinonaktifkan. Gunakan portal pemilih v2.' });
+    }
+
+    if (method === 'POST' && route === '/vote-legacy-disabled') {
       const s = await requireSession(event, 'voter');
       if (!s) return json(401, { error: 'Unauthorized' });
       const user = await getUserById(s.id);
@@ -372,6 +379,9 @@ async function handleEvent(event) {
 
     const adminSession = route.startsWith('/admin/') ? await requireSession(event, 'admin') : null;
     if (route.startsWith('/admin/') && !adminSession) return json(401, { error: 'Unauthorized' });
+    if (method === 'POST' && route.startsWith('/admin/') && route !== '/admin/login' && route !== '/admin/logout') {
+      return json(410, { error: 'Operasi admin pada sistem lama telah dinonaktifkan. Gunakan dashboard admin v2.' });
+    }
 
     if (method === 'GET' && route === '/admin/stats') return json(200, await getAdminStats());
 

@@ -6,36 +6,6 @@
   node_bundler = "esbuild"
 
 [[redirects]]
-  from = "/"
-  to = "/v2"
-  status = 302
-  force = true
-
-[[redirects]]
-  from = "/index.html"
-  to = "/v2"
-  status = 302
-  force = true
-
-[[redirects]]
-  from = "/admin"
-  to = "/admin-v2"
-  status = 302
-  force = true
-
-[[redirects]]
-  from = "/admin/"
-  to = "/admin-v2"
-  status = 302
-  force = true
-
-[[redirects]]
-  from = "/admin.html"
-  to = "/admin-v2"
-  status = 302
-  force = true
-
-[[redirects]]
   from = "/api/v2/*"
   to = "/.netlify/functions/api-v2/:splat"
   status = 200
@@ -56,6 +26,11 @@
   to = "/.netlify/functions/api/:splat"
   status = 200
   force = true
+
+[[redirects]]
+  from = "/admin"
+  to = "/admin.html"
+  status = 200
 
 [[headers]]
   for = "/*"

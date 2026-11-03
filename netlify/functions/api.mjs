@@ -280,10 +280,7 @@ async function handleEvent(event) {
   try {
     if (method === 'GET' && route === '/health') return json(200, { ok: true, storage: 'netlify-blobs' });
 
-    if (method === 'GET' && route === '/election') {
-      const legacyConfig = await getConfig();
-      return json(200, { ...legacyConfig, status: 'closed', legacyReadOnly: true, notice: 'Model pemilihan lama telah dihentikan. Gunakan portal pemilih v2.' });
-    }
+    if (method === 'GET' && route === '/election') return json(200, await getConfig());
 
     if (method === 'GET' && route === '/me') {
       const s = await requireSession(event, 'voter');
@@ -309,7 +306,55 @@ async function handleEvent(event) {
     }
 
     if (method === 'POST' && route === '/vote') {
-      return json(410, { error: 'Model pemilihan lama telah dinonaktifkan. Gunakan portal pemilih v2.' });
+      const s = await requireSession(event, 'voter');
+      if (!s) return json(401, { error: 'Unauthorized' });
+      const user = await getUserById(s.id);
+      if (!user) return json(401, { error: 'Akun pemilih tidak ditemukan.' });
+      const body = parseBody(event);
+      const candidateId = String(body.candidateId || '');
+      const cfg = await getConfig();
+      if (cfg.status !== 'open') return json(403, { error: 'Pemungutan suara sedang tidak dibuka.' });
+      if (!cfg.candidates.some(c => c.id === candidateId)) return json(400, { error: 'Paslon tidak valid.' });
+      const votes = stores.votes();
+      let lock = await getVoteLock(user.id);
+      let chosenCandidate = candidateId;
+      let ballotId;
+      let votedAt;
+
+      if (lock) {
+        if (lock.state === 'done') return json(409, { error: 'Hak suara akun ini sudah digunakan.' });
+        if (lock.state !== 'pending' || !lock.ballotId || !lock.candidateId) return json(409, { error: 'Status suara akun ini sedang diproses. Silakan muat ulang halaman.' });
+        chosenCandidate = lock.candidateId;
+        ballotId = lock.ballotId;
+        votedAt = lock.votedAt || new Date().toISOString();
+      } else {
+        ballotId = crypto.randomUUID();
+        votedAt = new Date().toISOString();
+        const lockResult = await votes.setJSON(
+          `voter/${user.id}`,
+          { voterId: user.id, state: 'pending', candidateId: chosenCandidate, ballotId, votedAt },
+          { onlyIfNew: true }
+        );
+        if (!lockResult.modified) {
+          lock = await getVoteLock(user.id);
+          if (!lock || lock.state === 'done') return json(409, { error: 'Hak suara akun ini sudah digunakan.' });
+          chosenCandidate = lock.candidateId;
+          ballotId = lock.ballotId;
+          votedAt = lock.votedAt || votedAt;
+        }
+      }
+
+      const ballotKey = `ballot/${ballotId}`;
+      const ballotResult = await votes.setJSON(ballotKey, { candidateId: chosenCandidate, votedAt }, { onlyIfNew: true });
+      if (!ballotResult.modified) {
+        const existing = await votes.get(ballotKey, { type: 'json', consistency: 'strong' });
+        if (!existing || existing.candidateId !== chosenCandidate) {
+          return json(500, { error: 'Gagal memverifikasi surat suara. Hubungi panitia.' });
+        }
+      }
+
+      await votes.setJSON(`voter/${user.id}`, { voterId: user.id, state: 'done', votedAt });
+      return json(200, { ok: true, message: 'Suara berhasil direkam.', votedAt });
     }
 
     if (method === 'POST' && route === '/admin/login') {
@@ -327,9 +372,6 @@ async function handleEvent(event) {
 
     const adminSession = route.startsWith('/admin/') ? await requireSession(event, 'admin') : null;
     if (route.startsWith('/admin/') && !adminSession) return json(401, { error: 'Unauthorized' });
-    if (method === 'POST' && route.startsWith('/admin/') && route !== '/admin/login' && route !== '/admin/logout') {
-      return json(410, { error: 'Operasi admin pada sistem lama telah dinonaktifkan. Gunakan dashboard admin v2.' });
-    }
 
     if (method === 'GET' && route === '/admin/stats') return json(200, await getAdminStats());
 

@@ -414,7 +414,7 @@ async function getAdminStats() {
     viceCounts,
     totalBallots,
     users: safeUsers,
-    config: { ...config, status: controlResult.rows[0]?.status || 'scheduled', configVersion: Number(controlResult.rows[0]?.config_version || 1) },
+    config: { ...config, status: controlResult.rows[0]?.status || 'scheduled', configVersion: Math.max(Number(config.configVersion || 1), Number(controlResult.rows[0]?.config_version || 1)) },
     database: 'postgresql'
   };
 }
@@ -480,7 +480,7 @@ async function handleEvent(event) {
     if (method === 'GET' && route === '/election') {
       const config = await getV2Config();
       const control = pool ? await getControl() : { status: 'scheduled', config_version: Number(config.configVersion || 1) };
-      return json(200, { ...config, status: control.status, configVersion: Number(control.config_version || 1), setupRequired: !pool });
+      return json(200, { ...config, status: control.status, configVersion: Math.max(Number(config.configVersion || 1), Number(control.config_version || 1)), setupRequired: !pool });
     }
 
     if (method === 'POST' && route === '/login') {
@@ -551,7 +551,7 @@ async function handleEvent(event) {
           await client.query('ROLLBACK');
           return json(403, { error: 'Pemungutan suara sedang tidak dibuka.' });
         }
-        if (Number(control.rows[0]?.config_version) !== submittedConfigVersion) {
+        if (Number(control.rows[0]?.config_version) !== submittedConfigVersion || Number(config.configVersion || 1) !== submittedConfigVersion) {
           await client.query('ROLLBACK');
           return json(409, { error: 'Data calon telah diperbarui. Muat ulang halaman sebelum mengirim suara.' });
         }
@@ -627,7 +627,7 @@ async function handleEvent(event) {
       const current = await getV2Config();
       const currentControl = pool ? await getControl() : { status: 'scheduled', config_version: Number(current.configVersion || 1) };
       const currentStatus = currentControl.status;
-      const currentVersion = Number(currentControl.config_version || 1);
+      const currentVersion = Math.max(Number(currentControl.config_version || 1), Number(current.configVersion || 1));
       const allowedStatus = ['scheduled', 'open', 'closed'];
       const nextStatus = allowedStatus.includes(body.status) ? body.status : currentStatus;
       let candidates;

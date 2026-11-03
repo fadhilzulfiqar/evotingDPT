@@ -1,0 +1,26 @@
+name: Validate E-Voting DPT v2
+
+on:
+  push:
+    branches:
+      - feature/independent-voting-v2
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Check JavaScript syntax
+        run: |
+          node --check netlify/functions/api-v2.mjs
+          node --check public/v2.js
+          node --check public/admin-v2.js
+          node --check scripts/load-test-v2.mjs

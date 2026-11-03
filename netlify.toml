@@ -61,6 +61,36 @@
     Cache-Control = "no-store"
 
 [[headers]]
+  for = "/v2.html"
+  [headers.values]
+    Cache-Control = "no-store"
+
+[[headers]]
+  for = "/admin-v2.html"
+  [headers.values]
+    Cache-Control = "no-store"
+
+[[headers]]
+  for = "/v2.js"
+  [headers.values]
+    Cache-Control = "no-store"
+
+[[headers]]
+  for = "/admin-v2.js"
+  [headers.values]
+    Cache-Control = "no-store"
+
+[[headers]]
+  for = "/v2.css"
+  [headers.values]
+    Cache-Control = "no-store"
+
+[[headers]]
+  for = "/admin-v2.css"
+  [headers.values]
+    Cache-Control = "no-store"
+
+[[headers]]
   for = "/styles.css"
   [headers.values]
     Cache-Control = "no-store"

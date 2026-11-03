@@ -483,7 +483,16 @@ async function verifyLegacyArchiveStillCurrent(manifest) {
     ]);
     return JSON.stringify(current) === JSON.stringify(archived);
   }));
-  return comparisons.every(Boolean);
+  if (!comparisons.every(Boolean)) return false;
+  const [finalConfig, finalVoters, finalBallots] = await Promise.all([
+    configStore.get('main', { type: 'json', consistency: 'strong' }),
+    votesStore.list({ prefix: 'voter/' }),
+    votesStore.list({ prefix: 'ballot/' })
+  ]);
+  const signature = entries => (entries || []).map(entry => entry.key).sort().join('|');
+  return JSON.stringify(finalConfig) === JSON.stringify(currentConfig)
+    && signature(finalVoters.blobs) === JSON.stringify(currentVoterKeys)
+    && signature(finalBallots.blobs) === JSON.stringify(currentBallotKeys);
 }
 
 async function getLatestLegacyArchiveManifest() {

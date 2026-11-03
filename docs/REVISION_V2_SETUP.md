@@ -17,6 +17,7 @@ Netlify Functions memakai PostgreSQL untuk transaksi suara. Tambahkan environmen
 
 - `DATABASE_URL`: pooled PostgreSQL connection string dari Neon, Supabase, atau penyedia PostgreSQL lain. Gunakan endpoint pooler/serverless yang disediakan provider.
 - `ADMIN_BOOTSTRAP_PASSWORD`: password awal admin yang kuat (minimal 8 karakter), bila belum tersedia pada store admin.
+- Untuk Deploy Preview, set `ADMIN_BOOTSTRAP_PASSWORD` pada konteks preview karena store admin preview terisolasi dari production.
 
 Jangan commit connection string atau password ke GitHub. Untuk Netlify Deploy Preview/Branch Deploy, gunakan database staging yang terpisah dari database production.
 
@@ -53,6 +54,9 @@ Setelah branch v2 lolos pengujian dan kode dipromosikan ke production:
 Backup legacy hanya diizinkan pada Netlify Production Context. Data asli pada `evoting-config` dan `evoting-votes` tidak dihapus. Arsip bersifat privat karena struktur voter-lock lama dapat mengandung hubungan internal antara akun dan pilihan.
 
 ## Catatan privasi dan kapasitas
+
+Selama status pemilihan `open`, rekap perolehan setiap calon disembunyikan dari dashboard admin. Admin tetap melihat jumlah akun yang sudah/belum berpartisipasi. Rekap calon baru tersedia setelah pemilihan ditutup untuk mengurangi potensi bias.
+
 
 - Tabel partisipasi menyimpan ID pemilih dan waktu, bukan pilihan.
 - Tabel ballot menyimpan pilihan Ketua dan Wakil, tanpa ID pemilih atau foreign key ke pemilih.

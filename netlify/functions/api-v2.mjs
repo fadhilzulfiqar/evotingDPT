@@ -164,21 +164,21 @@ async function ensureSchema() {
     schemaPromise = (async () => {
       const ddl =
         'CREATE TABLE IF NOT EXISTS evoting_v2_election_control (' +
-        'election_id TEXT PRIMARY KEY, status TEXT NOT NULL CHECK (status IN (\\'scheduled\\',\\'open\\',\\'closed\\')), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());\\n' +
+        'election_id TEXT PRIMARY KEY, status TEXT NOT NULL CHECK (status IN (\'scheduled\',\'open\',\'closed\')), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());\n' +
         'CREATE TABLE IF NOT EXISTS evoting_v2_eligibility (' +
-        'election_id TEXT NOT NULL, voter_id TEXT NOT NULL, active BOOLEAN NOT NULL DEFAULT TRUE, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (election_id, voter_id));\\n' +
+        'election_id TEXT NOT NULL, voter_id TEXT NOT NULL, active BOOLEAN NOT NULL DEFAULT TRUE, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (election_id, voter_id));\n' +
         'CREATE TABLE IF NOT EXISTS evoting_v2_participation (' +
-        'election_id TEXT NOT NULL, voter_id TEXT NOT NULL, voted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (election_id, voter_id));\\n' +
+        'election_id TEXT NOT NULL, voter_id TEXT NOT NULL, voted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (election_id, voter_id));\n' +
         'CREATE TABLE IF NOT EXISTS evoting_v2_ballots (' +
-        'ballot_id UUID PRIMARY KEY, election_id TEXT NOT NULL, idempotency_key UUID NOT NULL, chair_candidate_id TEXT NOT NULL, vice_candidate_id TEXT NOT NULL, voted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE (election_id, idempotency_key));\\n' +
-        'CREATE INDEX IF NOT EXISTS evoting_v2_ballots_election_idx ON evoting_v2_ballots (election_id);\\n' +
+        'ballot_id UUID PRIMARY KEY, election_id TEXT NOT NULL, idempotency_key UUID NOT NULL, chair_candidate_id TEXT NOT NULL, vice_candidate_id TEXT NOT NULL, voted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE (election_id, idempotency_key));\n' +
+        'CREATE INDEX IF NOT EXISTS evoting_v2_ballots_election_idx ON evoting_v2_ballots (election_id);\n' +
         'CREATE TABLE IF NOT EXISTS evoting_v2_ballot_archive (' +
-        'archive_id UUID NOT NULL, election_id TEXT NOT NULL, ballot_id UUID NOT NULL, chair_candidate_id TEXT NOT NULL, vice_candidate_id TEXT NOT NULL, voted_at TIMESTAMPTZ NOT NULL, archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (archive_id, ballot_id));\\n' +
+        'archive_id UUID NOT NULL, election_id TEXT NOT NULL, ballot_id UUID NOT NULL, chair_candidate_id TEXT NOT NULL, vice_candidate_id TEXT NOT NULL, voted_at TIMESTAMPTZ NOT NULL, archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (archive_id, ballot_id));\n' +
         'CREATE TABLE IF NOT EXISTS evoting_v2_participation_archive (' +
-        'archive_id UUID NOT NULL, election_id TEXT NOT NULL, voter_id TEXT NOT NULL, voted_at TIMESTAMPTZ NOT NULL, archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (archive_id, election_id, voter_id));\\n' +
+        'archive_id UUID NOT NULL, election_id TEXT NOT NULL, voter_id TEXT NOT NULL, voted_at TIMESTAMPTZ NOT NULL, archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (archive_id, election_id, voter_id));\n' +
         'CREATE TABLE IF NOT EXISTS evoting_v2_admin_audit (' +
-        'id BIGSERIAL PRIMARY KEY, election_id TEXT NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL, target_id TEXT, details JSONB NOT NULL DEFAULT \\'{}\\'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());\\n' +
-        'INSERT INTO evoting_v2_election_control (election_id, status) VALUES (\\'dpt-2026-2027-independent-v2\\', \\'scheduled\\') ON CONFLICT (election_id) DO NOTHING;';
+        'id BIGSERIAL PRIMARY KEY, election_id TEXT NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL, target_id TEXT, details JSONB NOT NULL DEFAULT \'{}\'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());\n' +
+        'INSERT INTO evoting_v2_election_control (election_id, status) VALUES (\'dpt-2026-2027-independent-v2\', \'scheduled\') ON CONFLICT (election_id) DO NOTHING;';
       await pool.query(ddl);
       return true;
     })().catch(error => {
@@ -314,7 +314,7 @@ function isCompleteCandidates(candidates) {
     candidates[role].length === 2 &&
     candidates[role].every(candidate =>
       candidate.name.length > 1 &&
-      /^data:image\\/(png|jpeg|jpg|webp);base64,/i.test(candidate.photo)
+      /^data:image\/(png|jpeg|jpg|webp);base64,/i.test(candidate.photo)
     )
   );
 }
@@ -362,9 +362,9 @@ async function getAdminStats() {
     pool.query('SELECT voter_id, active FROM evoting_v2_eligibility WHERE election_id=$1', [ELECTION_ID]),
     pool.query('SELECT voter_id, voted_at FROM evoting_v2_participation WHERE election_id=$1', [ELECTION_ID]),
     pool.query(
-      'SELECT \\'ketua\\' AS role, chair_candidate_id AS candidate_id, COUNT(*)::int AS total ' +
+      'SELECT \'ketua\' AS role, chair_candidate_id AS candidate_id, COUNT(*)::int AS total ' +
       'FROM evoting_v2_ballots WHERE election_id=$1 GROUP BY chair_candidate_id ' +
-      'UNION ALL SELECT \\'wakil\\' AS role, vice_candidate_id AS candidate_id, COUNT(*)::int AS total ' +
+      'UNION ALL SELECT \'wakil\' AS role, vice_candidate_id AS candidate_id, COUNT(*)::int AS total ' +
       'FROM evoting_v2_ballots WHERE election_id=$1 GROUP BY vice_candidate_id',
       [ELECTION_ID]
     ),
@@ -458,8 +458,8 @@ async function archiveLegacyData() {
 async function handleEvent(event) {
   const method = String(event.httpMethod || 'GET').toUpperCase();
   let route = event.path || '';
-  route = route.replace(/^\\/\\.netlify\\/functions\\/api-v2/, '');
-  route = route.replace(/^\\/api\\/v2/, '');
+  route = route.replace(/^\/\.netlify\/functions\/api-v2/, '');
+  route = route.replace(/^\/api\/v2/, '');
   route = route || '/';
 
   try {

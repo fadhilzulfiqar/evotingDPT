@@ -263,7 +263,7 @@
     if (!confirm('Buat salinan arsip privat dari data trial lama? Data sumber tidak akan dihapus. Pada deploy preview, fitur ini memang dinonaktifkan.')) return;
     try {
       const result = await api('/admin/legacy-archive', { method:'POST', body:'{}' });
-      feedback('Backup berhasil dibuat: ' + result.manifest.backupId + '. Record voter-lock: ' + result.manifest.voterLockRecordsCopied + ', ballot: ' + result.manifest.ballotRecordsCopied + '.', 'success');
+      feedback('Backup berhasil dibuat: ' + result.manifest.backupId + '. User: ' + result.manifest.userRecordsCopied + ', mapping username: ' + result.manifest.usernameMappingsCopied + ', voter-lock: ' + result.manifest.voterLockRecordsCopied + ', ballot: ' + result.manifest.ballotRecordsCopied + '. SHA-256: ' + result.manifest.sha256, 'success');
       await loadStats(); renderTab('settings');
     } catch (error) { feedback(error.message); }
   }

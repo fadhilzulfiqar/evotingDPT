@@ -10,7 +10,11 @@ const prefix = process.env.LOAD_TEST_PREFIX || ('lt' + Date.now().toString(36).s
 if (!baseUrl || !adminPassword) {
   throw new Error('Set BASE_URL and ADMIN_PASSWORD before running this test.');
 }
-if (!/deploy-preview-\d+--/i.test(new URL(baseUrl).hostname) && process.env.ALLOW_NON_PREVIEW_STAGING !== 'true') {
+const targetHostname = new URL(baseUrl).hostname.toLowerCase();
+if (['evotedpt.netlify.app', 'evotingdpt.netlify.app', 'newevotingdpt.netlify.app'].includes(targetHostname)) {
+  throw new Error('Safety stop: this is a known live Netlify site, not a load-test target.');
+}
+if (!/deploy-preview-\d+--/i.test(targetHostname) && process.env.ALLOW_NON_PREVIEW_STAGING !== 'true') {
   throw new Error('Safety stop: run this test only against a Netlify Deploy Preview with a separate staging database. For a verified non-production staging host, set ALLOW_NON_PREVIEW_STAGING=true.');
 }
 

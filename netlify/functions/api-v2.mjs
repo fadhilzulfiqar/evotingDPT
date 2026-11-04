@@ -281,37 +281,22 @@ async function writeAudit(action, targetId = null, details = {}) {
 
 async function ensureAdmin() {
   const store = stores.admins();
-  let admin = await store.get('main', { type: 'json', consistency: 'strong' });
+  const existing = await store.get('main', { type: 'json', consistency: 'strong' });
+  if (existing) return existing;
+
   const bootstrap = String(process.env.ADMIN_BOOTSTRAP_PASSWORD || process.env.admin_dpt || process.env.ADMIN_DPT || '');
   if (bootstrap.length < 8) {
-    if (admin) return admin;
     throw new Error('ADMIN_BOOTSTRAP_PASSWORD belum diatur atau kurang dari 8 karakter.');
   }
-  const fingerprint = crypto.createHash('sha256').update(bootstrap).digest('hex');
-  if (!admin) {
-    const seed = {
-      username: 'admin_dpt',
-      passwordHash: await hashPassword(bootstrap),
-      bootstrapFingerprint: fingerprint,
-      updatedAt: new Date().toISOString()
-    };
-    const result = await store.setJSON('main', seed, { onlyIfNew: true });
-    if (result.modified) return seed;
-    admin = await store.get('main', { type: 'json', consistency: 'strong' });
-  }
-  if (admin && admin.bootstrapFingerprint !== fingerprint) {
-    admin = {
-      ...admin,
-      username: 'admin_dpt',
-      passwordHash: await hashPassword(bootstrap),
-      bootstrapFingerprint: fingerprint,
-      updatedAt: new Date().toISOString()
-    };
-    await store.setJSON('main', admin);
-  }
-  return admin;
+  const seed = {
+    username: 'admin_dpt',
+    passwordHash: await hashPassword(bootstrap),
+    updatedAt: new Date().toISOString()
+  };
+  const result = await store.setJSON('main', seed, { onlyIfNew: true });
+  if (result.modified) return seed;
+  return await store.get('main', { type: 'json', consistency: 'strong' });
 }
-
 async function getUserById(id) {
   return await stores.users().get('user/' + id, { type: 'json', consistency: 'strong' });
 }

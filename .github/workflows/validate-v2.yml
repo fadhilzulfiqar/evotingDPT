@@ -24,3 +24,4 @@ jobs:
           node --check public/v2.js
           node --check public/admin-v2.js
           node --check scripts/load-test-v2.mjs
+          node scripts/validate-v2-invariants.mjs

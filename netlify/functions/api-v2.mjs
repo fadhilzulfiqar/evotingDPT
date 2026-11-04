@@ -309,10 +309,9 @@ async function recoverPendingVotes() {
   return { recovered, unresolved };
 }
 
-async function archiveAndResetElection() {
+async function resetElectionData() {
   const configStore = stores.config();
   const votesStore = stores.votes();
-  const archiveStore = stores.legacyArchive();
   const config = await getV2Config();
   if (config.status === 'open' || config.status === 'closing') {
     throw new Error('Tutup pemilihan terlebih dahulu sebelum reset.');
@@ -320,7 +319,7 @@ async function archiveAndResetElection() {
 
   const recovery = await recoverPendingVotes();
   if (recovery.unresolved.length) {
-    throw new Error('Ada ' + recovery.unresolved.length + ' transaksi suara yang belum selesai. Minta pemilih terkait mengirim ulang sebelum reset.');
+    throw new Error('Ada ' + recovery.unresolved.length + ' transaksi suara yang belum selesai. Reset dibatalkan.');
   }
 
   const [ballotList, participationList, pendingList] = await Promise.all([
@@ -328,99 +327,54 @@ async function archiveAndResetElection() {
     votesStore.list({ prefix: 'v2/participation/' }),
     votesStore.list({ prefix: 'v2/pending/' })
   ]);
-  const archiveId = 'v2-reset-' + new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14) + '-' + crypto.randomBytes(3).toString('hex');
-  const snapshots = { ballots: [], participation: [], pending: [] };
 
-  const copyGroup = async (items, group, sourcePrefix) => {
-    for (const item of items || []) {
-      const value = await votesStore.get(item.key, { type: 'json', consistency: 'strong' });
-      if (!value) throw new Error('Data pemilihan berubah saat proses arsip. Reset dibatalkan.');
-      const suffix = item.key.slice(sourcePrefix.length);
-      const archiveKey = archiveId + '/' + group + '/' + suffix;
-      const result = await archiveStore.setJSON(archiveKey, value, { onlyIfNew: true });
-      if (!result.modified) {
-        const existing = await archiveStore.get(archiveKey, { type: 'json', consistency: 'strong' });
-        if (JSON.stringify(existing) !== JSON.stringify(value)) {
-          throw new Error('Verifikasi arsip gagal. Data aktif tidak dihapus.');
-        }
-      }
-      snapshots[group].push({ key: item.key, archiveKey, value });
-    }
+  if ((pendingList.blobs || []).length) {
+    throw new Error('Masih ada transaksi suara sementara. Reset dibatalkan agar tidak menghilangkan suara yang belum terselesaikan.');
+  }
+
+  const latestConfig = await getV2Config();
+  if (latestConfig.status === 'open' || latestConfig.status === 'closing') {
+    throw new Error('Status pemilihan berubah. Reset dibatalkan.');
+  }
+
+  const counts = {
+    ballotRecordsDeleted: (ballotList.blobs || []).length,
+    participationRecordsDeleted: (participationList.blobs || []).length,
+    pendingRecordsDeleted: 0
   };
 
-  await copyGroup(ballotList.blobs, 'ballots', 'v2/ballot/');
-  await copyGroup(participationList.blobs, 'participation', 'v2/participation/');
-  await copyGroup(pendingList.blobs, 'pending', 'v2/pending/');
+  // Permanent reset: remove only active ballots and participation locks.
+  // Voter accounts, candidate configuration, and audit history are preserved.
+  for (const item of ballotList.blobs || []) {
+    await votesStore.delete(item.key);
+  }
+  for (const item of participationList.blobs || []) {
+    await votesStore.delete(item.key);
+  }
 
   const [ballotsAfter, participationAfter, pendingAfter] = await Promise.all([
     votesStore.list({ prefix: 'v2/ballot/' }),
     votesStore.list({ prefix: 'v2/participation/' }),
     votesStore.list({ prefix: 'v2/pending/' })
   ]);
-  const signature = items => (items || []).map(item => item.key).sort().join('|');
   if (
-    signature(ballotsAfter.blobs) !== signature(ballotList.blobs) ||
-    signature(participationAfter.blobs) !== signature(participationList.blobs) ||
-    signature(pendingAfter.blobs) !== signature(pendingList.blobs)
+    (ballotsAfter.blobs || []).length ||
+    (participationAfter.blobs || []).length ||
+    (pendingAfter.blobs || []).length
   ) {
-    throw new Error('Data pemilihan berubah selama backup. Tidak ada data aktif yang dihapus.');
+    throw new Error('Reset belum tuntas: masih ada data suara aktif. Periksa dashboard sebelum membuka pemilihan.');
   }
-
-  for (const group of ['ballots', 'participation', 'pending']) {
-    for (const item of snapshots[group]) {
-      const sourceValue = await votesStore.get(item.key, { type: 'json', consistency: 'strong' });
-      const archiveValue = await archiveStore.get(item.archiveKey, { type: 'json', consistency: 'strong' });
-      if (JSON.stringify(sourceValue) !== JSON.stringify(item.value) || JSON.stringify(archiveValue) !== JSON.stringify(item.value)) {
-        throw new Error('Checksum arsip tidak cocok. Tidak ada data aktif yang dihapus.');
-      }
-    }
-  }
-
-  const checksumItems = [
-    ...snapshots.ballots.map(item => ({ store: 'ballots', key: item.key, value: item.value })),
-    ...snapshots.participation.map(item => ({ store: 'participation', key: item.key, value: item.value })),
-    ...snapshots.pending.map(item => ({ store: 'pending', key: item.key, value: item.value }))
-  ].sort((a, b) => (a.store + '/' + a.key).localeCompare(b.store + '/' + b.key));
-  const sha256 = crypto.createHash('sha256').update(JSON.stringify(checksumItems)).digest('hex');
-  const manifest = {
-    archiveId,
-    type: 'v2-election-reset',
-    createdAt: new Date().toISOString(),
-    ballotRecordsCopied: snapshots.ballots.length,
-    participationRecordsCopied: snapshots.participation.length,
-    pendingRecordsCopied: snapshots.pending.length,
-    snapshotVerified: true,
-    sha256,
-    note: 'Arsip surat suara dan partisipasi disimpan terpisah. Arsip tidak menyimpan hubungan antara identitas pemilih dan pilihan.'
-  };
-  await archiveStore.setJSON(archiveId + '/manifest', manifest, { onlyIfNew: true });
-
-  const latestConfig = await getV2Config();
-  if (latestConfig.status === 'open' || latestConfig.status === 'closing') {
-    throw new Error('Status pemilihan berubah. Reset dibatalkan sebelum penghapusan data.');
-  }
-
-  for (const item of snapshots.ballots) await votesStore.delete(item.key);
-  for (const item of snapshots.participation) await votesStore.delete(item.key);
-  for (const item of snapshots.pending) await votesStore.delete(item.key);
 
   await configStore.setJSON('v2/main', {
     ...latestConfig,
     status: 'scheduled',
     configVersion: Number(latestConfig.configVersion || 1) + 1
   });
-  await writeAudit('election.reset_archived', archiveId, {
-    ballotRecordsCopied: snapshots.ballots.length,
-    participationRecordsCopied: snapshots.participation.length,
-    pendingRecordsCopied: snapshots.pending.length,
-    sha256
-  });
+  await writeAudit('election.reset_permanent', 'active-election', counts);
+
   return {
-    archiveId,
-    ballotRecordsCopied: snapshots.ballots.length,
-    participationRecordsCopied: snapshots.participation.length,
-    pendingRecordsCopied: snapshots.pending.length,
-    sha256
+    ...counts,
+    message: 'Hasil pemilihan aktif dihapus permanen tanpa arsip. Akun pemilih, data calon, dan riwayat audit tetap dipertahankan.'
   };
 }
 
@@ -1200,20 +1154,17 @@ async function handleEvent(event) {
 
     if (method === 'POST' && route === '/admin/reset-practice') {
       if (!isProductionDeploy()) {
-        return json(409, { error: 'Reset data produksi hanya dapat dijalankan pada deploy production.' });
-      }
-      if (STORE_NAMESPACE !== 'production') {
-        return json(409, { error: 'Data belum dipindahkan ke namespace Production. Jalankan salin dan verifikasi data terlebih dahulu.' });
+        return json(409, { error: 'Reset hanya dapat dijalankan dari website Production.' });
       }
       try {
-        const result = await archiveAndResetElection();
+        const result = await resetElectionData();
         return json(200, {
           ok: true,
           ...result,
-          message: 'Data pemilihan v2 diarsipkan dan direset. Akun pemilih serta konfigurasi calon tetap tersimpan.'
+          message: 'Hasil pemilihan direset permanen tanpa arsip. Akun pemilih dan konfigurasi calon tetap tersimpan.'
         });
       } catch (error) {
-        return json(409, { error: error.message || 'Reset gagal. Data aktif tidak dihapus.' });
+        return json(409, { error: error.message || 'Reset gagal. Periksa status pemilihan dan transaksi tertunda.' });
       }
     }
 

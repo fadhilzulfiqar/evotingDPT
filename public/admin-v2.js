@@ -59,7 +59,7 @@
 
   function renderCandidates() {
     draftConfig = JSON.parse(JSON.stringify(stats.config));
-    const locked = stats.config.status === 'open';
+    const locked = stats.config.status === 'open' || stats.config.status === 'closing';
     let html = heading('PENGELOLAAN CALON', 'Empat kandidat independen', 'Atur dua calon Ketua dan dua calon Wakil. Masing-masing jabatan memiliki pemungutan suara sendiri.');
     if (locked) html += '<div class="notice-error">Pemilihan sedang dibuka. Data calon dikunci. Tutup pemilihan terlebih dahulu jika perlu melakukan perubahan.</div>';
     html += '<section class="admin-panel"><div class="admin-form-grid">';

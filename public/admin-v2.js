@@ -84,21 +84,27 @@
     rows.forEach((user, index) => {
       const state = user.votePending
         ? '<span class="status-pill pending">TRANSAKSI SUARA DIPROSES</span>'
-        : !user.active ? '<span class="status-pill disabled">DINONAKTIFKAN</span>'
-        : user.hasVoted ? '<span class="status-pill done">SUDAH MEMILIH</span>'
-        : '<span class="status-pill pending">BELUM MEMILIH</span>';
+        : user.voteDeleting
+          ? '<span class="status-pill pending">PENGHAPUSAN DIPROSES</span>'
+          : !user.active ? '<span class="status-pill disabled">DINONAKTIFKAN</span>'
+          : user.hasVoted ? '<span class="status-pill done">SUDAH MEMILIH</span>'
+          : '<span class="status-pill pending">BELUM MEMILIH</span>';
       const deleteButton = user.votePending
         ? (user.active ? '<button class="small-button warn" type="button" data-action="delete" data-id="' + esc(user.id) + '">Kunci akun</button>' : '<span class="inline-note">Tunggu transaksi selesai</span>')
-        : user.hasVoted && !user.canDeleteVote
-          ? '<button class="small-button warn" type="button" disabled>Reset dulu</button>'
-          : '<button class="small-button warn" type="button" data-action="delete" data-id="' + esc(user.id) + '">' + (user.hasVoted ? 'Hapus akun + suara' : 'Hapus') + '</button>';
+        : user.voteDeleting
+          ? '<button class="small-button warn" type="button" data-action="delete" data-id="' + esc(user.id) + '">Lanjutkan hapus</button>'
+          : user.hasVoted && !user.canDeleteVote
+            ? '<button class="small-button warn" type="button" disabled>Reset dulu</button>'
+            : '<button class="small-button warn" type="button" data-action="delete" data-id="' + esc(user.id) + '">' + (user.hasVoted ? 'Hapus akun + suara' : 'Hapus') + '</button>';
       const voteNote = user.hasVoted
         ? (user.canDeleteVote ? '<span class="inline-note">Suara dapat dicabut saat akun dihapus</span>' : '<span class="inline-note">Suara lama: reset hasil dahulu</span>')
         : '';
-      const actions = user.active
-        ? '<button class="small-button" type="button" data-action="edit" data-id="' + esc(user.id) + '">Edit</button> ' +
-          (user.votePending ? '<span class="inline-note">Hak akses dapat dikunci</span>' : user.hasVoted ? voteNote : '<button class="small-button warn" type="button" data-action="deactivate" data-id="' + esc(user.id) + '">Nonaktifkan</button> ') + deleteButton
-        : (user.votePending ? '<span class="inline-note">Akun dikunci; menunggu transaksi</span>' : '<button class="small-button" type="button" data-action="activate" data-id="' + esc(user.id) + '">Aktifkan kembali</button> ') + voteNote + deleteButton;
+      const actions = user.voteDeleting
+        ? deleteButton
+        : user.active
+          ? '<button class="small-button" type="button" data-action="edit" data-id="' + esc(user.id) + '">Edit</button> ' +
+            (user.votePending ? '<span class="inline-note">Hak akses dapat dikunci</span>' : user.hasVoted ? voteNote : '<button class="small-button warn" type="button" data-action="deactivate" data-id="' + esc(user.id) + '">Nonaktifkan</button> ') + deleteButton
+          : (user.votePending ? '<span class="inline-note">Akun dikunci; menunggu transaksi</span>' : '<button class="small-button" type="button" data-action="activate" data-id="' + esc(user.id) + '">Aktifkan kembali</button> ') + voteNote + deleteButton;
       html += '<tr><td>' + (index + 1) + '</td><td>' + esc(user.name) + '</td><td>' + esc(user.username) + '</td><td>' + state + '</td><td>' + (user.votedAt ? esc(new Date(user.votedAt).toLocaleString('id-ID')) : '—') + '</td><td>' + actions + '</td></tr>';
     });
     $('#voterRows').innerHTML = html || '<tr><td colspan="6">Tidak ada data pemilih.</td></tr>';
@@ -298,7 +304,9 @@
     const user = stats.users.find(item => item.id === id);
     if (!user) return;
     let message;
-    if (user.votePending) {
+    if (user.voteDeleting) {
+      message = 'Lanjutkan penghapusan akun ' + user.name + ' dan pastikan surat suara terkait dikeluarkan dari hasil.';
+    } else if (user.votePending) {
       message = 'Akun ' + user.name + ' akan langsung dikunci dan semua sesi login dicabut. Jika transaksi suara selesai, tekan Hapus akun kembali agar penghapusan suara dan akun dituntaskan.';
     } else if (user.hasVoted && user.canDeleteVote) {
       message = 'Hapus akun ' + user.name + ' (' + user.username + ') sekaligus cabut surat suara yang terkait dari perhitungan hasil? Total suara akan berkurang satu. Tindakan dicatat pada audit admin dan tidak dapat dibatalkan.';

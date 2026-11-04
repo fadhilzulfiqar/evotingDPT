@@ -275,7 +275,7 @@ async function handle(event) {
         backupCounts[name] = listing.blobs.length;
         for (const blob of listing.blobs) {
           const value = await source.get(blob.key, { type: 'json', consistency: 'strong' });
-          if (value !== null && value !== undefined) await stores.archive().setJSON('backup/' + archiveId + '/' + name + '/' + blob.key, value, { onlyIfNew: true });
+          if (value !== null && value !== undefined) { const checksum = crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex'); await stores.archive().setJSON('backup/' + archiveId + '/' + name + '/' + blob.key, { checksum, value }, { onlyIfNew: true }); }
         }
       }
       const verify = {};

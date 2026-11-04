@@ -24,9 +24,16 @@ const DEFAULT_CONFIG = {
   }
 };
 
-const STORE_PREFIX = process.env.CONTEXT === 'production'
+// Netlify's CONTEXT is a build-time variable and is not guaranteed at
+// Functions runtime. Use explicit Functions-scoped environment variables.
+const DEPLOY_CONTEXT = String(process.env.EVOTING_DEPLOY_CONTEXT || '').trim().toLowerCase();
+const STORE_NAMESPACE = String(process.env.EVOTING_STORE_NAMESPACE || 'preview').trim().toLowerCase() === 'production'
+  ? 'production'
+  : 'preview';
+const STORE_PREFIX = STORE_NAMESPACE === 'production'
   ? 'evotingdpt-fresh-prod-'
   : 'evotingdpt-fresh-preview-';
+const isProductionDeploy = () => DEPLOY_CONTEXT === 'production';
 const storeName = name => STORE_PREFIX + name;
 const stores = {
   config: () => getStore(storeName('config')),
@@ -417,6 +424,125 @@ async function archiveAndResetElection() {
   };
 }
 
+async function migratePreviewNamespaceToProduction() {
+  if (!isProductionDeploy()) throw new Error('Migrasi hanya dapat dijalankan pada deploy Production.');
+  if (STORE_NAMESPACE !== 'preview') throw new Error('Namespace aktif bukan Preview. Migrasi tidak diperlukan atau sudah selesai.');
+
+  const sourceConfig = getStore('evotingdpt-fresh-preview-config');
+  const sourceVotes = getStore('evotingdpt-fresh-preview-votes');
+  const config = await sourceConfig.get('v2/main', { type: 'json', consistency: 'strong' });
+  if (!config) throw new Error('Konfigurasi pemilihan pada namespace Preview tidak ditemukan.');
+  if (config.status === 'open' || config.status === 'closing') {
+    throw new Error('Tutup pemilihan terlebih dahulu sebelum migrasi data.');
+  }
+
+  const recovery = await recoverPendingVotes();
+  if (recovery.unresolved.length) {
+    throw new Error('Migrasi dibatalkan karena ada transaksi suara yang belum selesai.');
+  }
+  const pendingAfterRecovery = await sourceVotes.list({ prefix: 'v2/pending/' });
+  if ((pendingAfterRecovery.blobs || []).length) {
+    throw new Error('Migrasi dibatalkan karena masih ada data transaksi tertunda.');
+  }
+
+  const storeNames = ['config', 'users', 'votes', 'admins', 'sessions', 'archive'];
+  const copied = {};
+  const records = [];
+  const migrationManifestPrefix = 'storage-migration-preview-to-production/';
+
+  for (const name of storeNames) {
+    const source = getStore('evotingdpt-fresh-preview-' + name);
+    const target = getStore('evotingdpt-fresh-prod-' + name);
+    const [sourceListing, targetListing] = await Promise.all([source.list(), target.list()]);
+    const sourceKeys = (sourceListing.blobs || []).map(item => item.key).sort();
+    const sourceKeySet = new Set(sourceKeys);
+    const targetKeys = (targetListing.blobs || []).map(item => item.key);
+    const unexpectedTargetKeys = targetKeys.filter(key =>
+      !sourceKeySet.has(key) && !(name === 'archive' && key.startsWith(migrationManifestPrefix))
+    );
+    if (unexpectedTargetKeys.length) {
+      throw new Error('Migrasi dihentikan: penyimpanan Production sudah berisi data lain pada store ' + name + '. Tidak ada data yang ditimpa.');
+    }
+
+    for (const item of sourceListing.blobs || []) {
+      const value = await source.get(item.key, { type: 'json', consistency: 'strong' });
+      if (value === null || value === undefined) {
+        throw new Error('Data sumber tidak dapat dibaca pada store ' + name + '. Migrasi dibatalkan.');
+      }
+      let existing = await target.get(item.key, { type: 'json', consistency: 'strong' });
+      if (existing !== null) {
+        if (JSON.stringify(existing) !== JSON.stringify(value)) {
+          throw new Error('Konflik data ditemukan pada store ' + name + '. Data Production tidak ditimpa.');
+        }
+      } else {
+        await target.setJSON(item.key, value, { onlyIfNew: true });
+        existing = await target.get(item.key, { type: 'json', consistency: 'strong' });
+        if (JSON.stringify(existing) !== JSON.stringify(value)) {
+          throw new Error('Verifikasi salinan gagal pada store ' + name + '. Data sumber tetap dipertahankan.');
+        }
+      }
+      records.push({ store: name, key: item.key, value });
+    }
+
+    const sourceAfter = await source.list();
+    const sourceKeysAfter = (sourceAfter.blobs || []).map(item => item.key).sort();
+    if (sourceKeysAfter.join('|') !== sourceKeys.join('|')) {
+      throw new Error('Data sumber berubah selama migrasi pada store ' + name + '. Jalankan ulang setelah aktivitas dihentikan.');
+    }
+
+    for (const record of records.filter(entry => entry.store === name)) {
+      const [sourceValue, targetValue] = await Promise.all([
+        source.get(record.key, { type: 'json', consistency: 'strong' }),
+        target.get(record.key, { type: 'json', consistency: 'strong' })
+      ]);
+      if (JSON.stringify(sourceValue) !== JSON.stringify(record.value) ||
+          JSON.stringify(targetValue) !== JSON.stringify(record.value)) {
+        throw new Error('Verifikasi akhir gagal pada store ' + name + '. Data sumber tidak dihapus.');
+      }
+    }
+    copied[name] = sourceKeys.length;
+  }
+
+  const checksumRecords = [...records].sort((a, b) =>
+    (a.store + '/' + a.key).localeCompare(b.store + '/' + b.key)
+  );
+  const sha256 = crypto.createHash('sha256').update(JSON.stringify(checksumRecords)).digest('hex');
+  const migrationId = migrationManifestPrefix +
+    new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14) + '-' +
+    crypto.randomBytes(3).toString('hex');
+  const manifest = {
+    migrationId,
+    type: 'preview-to-production-namespace-copy',
+    createdAt: new Date().toISOString(),
+    sourceNamespace: 'preview',
+    destinationNamespace: 'production',
+    copied,
+    totalRecordsCopied: records.length,
+    sha256,
+    verified: true,
+    sourceDataDeleted: false,
+    note: 'Seluruh data sumber tetap dipertahankan. Salinan Production diverifikasi per record.'
+  };
+  const productionArchive = getStore('evotingdpt-fresh-prod-archive');
+  await productionArchive.setJSON(migrationId + '/manifest', manifest, { onlyIfNew: true });
+  const verifiedManifest = await productionArchive.get(migrationId + '/manifest', {
+    type: 'json',
+    consistency: 'strong'
+  });
+  if (JSON.stringify(verifiedManifest) !== JSON.stringify(manifest)) {
+    throw new Error('Manifest migrasi tidak dapat diverifikasi. Data sumber tetap dipertahankan.');
+  }
+
+  return {
+    migrationId,
+    copied,
+    totalRecordsCopied: records.length,
+    sha256,
+    verified: true,
+    sourceDataDeleted: false
+  };
+}
+
 async function ensureAdmin() {
   const store = stores.admins();
   let admin = await store.get('main', { type: 'json', consistency: 'strong' });
@@ -597,6 +723,8 @@ async function getAdminStats() {
     config: { ...config, configVersion: Number(config.configVersion || 1) },
     database: 'netlify-blobs',
     storage: 'netlify-blobs',
+    deployContext: DEPLOY_CONTEXT || 'unconfigured',
+    storageNamespace: STORE_NAMESPACE,
     updatedAt,
     recoveryRequired: pending > 0
   };
@@ -716,7 +844,7 @@ async function handleEvent(event) {
     if (method === 'GET' && route === '/health') {
       await getV2Config();
       await stores.votes().list({ prefix: 'v2/' });
-      return json(200, { ok: true, storage: 'netlify-blobs', electionVersion: 2 });
+      return json(200, { ok: true, storage: 'netlify-blobs', electionVersion: 2, deployContext: DEPLOY_CONTEXT || 'unconfigured', storageNamespace: STORE_NAMESPACE });
     }
 
     if (method === 'GET' && route === '/election') {
@@ -846,7 +974,9 @@ async function handleEvent(event) {
       return json(200, {
         setupRequired: !admin,
         bootstrapConfigured: configuredAdminBootstrapPasswords().length > 0,
-        authMode: 'legacy-bootstrap-sync-v1'
+        authMode: 'legacy-bootstrap-sync-v1',
+        deployContext: DEPLOY_CONTEXT || 'unconfigured',
+        storageNamespace: STORE_NAMESPACE
       });
     }
 
@@ -897,6 +1027,26 @@ async function handleEvent(event) {
     if (route.startsWith('/admin/') && !adminSession) return json(401, { error: 'Akses admin tidak valid.' });
 
     if (method === 'GET' && route === '/admin/stats') return json(200, await getAdminStats());
+
+    if (method === 'POST' && route === '/admin/migrate-production') {
+      if (!isProductionDeploy()) {
+        return json(409, { error: 'Migrasi data hanya dapat dijalankan pada deploy Production.' });
+      }
+      try {
+        const result = await migratePreviewNamespaceToProduction();
+        await writeAudit('storage.preview_copied_to_production', result.migrationId, {
+          totalRecordsCopied: result.totalRecordsCopied,
+          sha256: result.sha256
+        });
+        return json(200, {
+          ok: true,
+          ...result,
+          message: 'Data Preview berhasil disalin dan diverifikasi ke namespace Production. Data sumber tidak dihapus.'
+        });
+      } catch (error) {
+        return json(409, { error: error.message || 'Migrasi gagal. Data sumber tetap dipertahankan.' });
+      }
+    }
 
     if (method === 'POST' && route === '/admin/config') {
       const body = parseBody(event);
@@ -1031,7 +1181,7 @@ async function handleEvent(event) {
     }
 
     if (method === 'POST' && route === '/admin/legacy-archive') {
-      if (process.env.CONTEXT !== 'production') return json(409, { error: 'Arsip data produksi hanya dapat dijalankan pada deploy production setelah pemeriksaan admin.' });
+      if (!isProductionDeploy()) return json(409, { error: 'Arsip data produksi hanya dapat dijalankan pada deploy production setelah pemeriksaan admin.' });
       let manifest;
       try {
         manifest = await archiveLegacyData();
@@ -1049,8 +1199,11 @@ async function handleEvent(event) {
     }
 
     if (method === 'POST' && route === '/admin/reset-practice') {
-      if (process.env.CONTEXT !== 'production') {
+      if (!isProductionDeploy()) {
         return json(409, { error: 'Reset data produksi hanya dapat dijalankan pada deploy production.' });
+      }
+      if (STORE_NAMESPACE !== 'production') {
+        return json(409, { error: 'Data belum dipindahkan ke namespace Production. Jalankan salin dan verifikasi data terlebih dahulu.' });
       }
       try {
         const result = await archiveAndResetElection();

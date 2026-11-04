@@ -1,4 +1,4 @@
-import { connectLambda, getStore } from '@netlify/blobs';
+import { getStore } from '@netlify/blobs';
 import crypto from 'node:crypto';
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const USERNAME_RE = /^[A-Za-z0-9._@+-]{2,80}$/;
@@ -1014,9 +1014,24 @@ async function handleEvent(event) {
   }
 }
 
-export const handler = async event => {
-  // This project uses Netlify's Lambda-compatible function signature.
-  // Initialize the Blobs runtime context before any getStore() call.
-  connectLambda(event);
-  return handleEvent(event);
+export default async (request, context) => {
+  // Use the modern Netlify Functions 2.0 Request/Response interface.
+  // Netlify injects the Blobs execution context automatically in this mode.
+  const url = new URL(request.url);
+  const body = request.method === 'GET' || request.method === 'HEAD'
+    ? null
+    : await request.text();
+  const event = {
+    path: url.pathname,
+    httpMethod: request.method,
+    headers: Object.fromEntries(request.headers.entries()),
+    queryStringParameters: Object.fromEntries(url.searchParams.entries()),
+    body,
+    isBase64Encoded: false
+  };
+  const result = await handleEvent(event);
+  return new Response(result.body || null, {
+    status: result.statusCode || 200,
+    headers: result.headers || { 'cache-control': 'no-store' }
+  });
 };

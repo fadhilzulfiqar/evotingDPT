@@ -29,7 +29,7 @@ assert.match(ballots, /chair_candidate_id/);
 assert.match(ballots, /vice_candidate_id/);
 assert.doesNotMatch(ballots, /voter_id|username|voted_at|foreign key/i);
 assert.doesNotMatch(ballotArchive, /voter_id|username|voted_at|foreign key/i);
-assert.match(ballots, /UNIQUE \\(election_id, idempotency_key\\)/);
+assert.match(ballots, /UNIQUE \(election_id, idempotency_key\)/);
 
 const voteStart = api.indexOf("if (method === 'POST' && route === '/vote')");
 const voteEnd = api.indexOf("if (method === 'POST' && route === '/admin/login')", voteStart);

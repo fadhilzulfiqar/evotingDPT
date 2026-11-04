@@ -313,8 +313,8 @@ async function resetElectionData() {
   const configStore = stores.config();
   const votesStore = stores.votes();
   const config = await getV2Config();
-  if (config.status === 'open' || config.status === 'closing') {
-    throw new Error('Tutup pemilihan terlebih dahulu sebelum reset.');
+  if (config.status !== 'closed') {
+    throw new Error('Pemilihan harus berstatus DITUTUP sebelum reset.');
   }
 
   const recovery = await recoverPendingVotes();
@@ -333,8 +333,8 @@ async function resetElectionData() {
   }
 
   const latestConfig = await getV2Config();
-  if (latestConfig.status === 'open' || latestConfig.status === 'closing') {
-    throw new Error('Status pemilihan berubah. Reset dibatalkan.');
+  if (latestConfig.status !== 'closed') {
+    throw new Error('Status pemilihan tidak lagi DITUTUP. Reset dibatalkan.');
   }
 
   const counts = {
@@ -1111,7 +1111,7 @@ async function handleEvent(event) {
       return json(200, { ok: true });
     }
 
-    if (method === 'POST' && (route === '/admin/users/deactivate' || route === '/admin/users/delete')) {
+    if (method === 'POST' && route === '/admin/users/deactivate') {
       const body = parseBody(event);
       const id = String(body.id || '');
       const user = await getUserById(id);
@@ -1122,6 +1122,60 @@ async function handleEvent(event) {
       await stores.users().setJSON('user/' + id, next);
       await writeAudit('voter.deactivated', id, { username: user.username });
       return json(200, { ok: true, message: 'Akun dinonaktifkan; data akun tetap disimpan.' });
+    }
+
+    if (method === 'POST' && route === '/admin/users/delete') {
+      const body = parseBody(event);
+      const id = String(body.id || '');
+      const user = await getUserById(id);
+      if (!user) return json(404, { error: 'Pemilih tidak ditemukan.' });
+
+      const votesStore = stores.votes();
+      const participationKey = 'v2/participation/' + id;
+      const deleteClaim = await votesStore.setJSON(participationKey, {
+        state: 'deleting',
+        startedAt: new Date().toISOString()
+      }, { onlyIfNew: true });
+
+      if (!deleteClaim.modified) {
+        return json(409, { error: 'Akun yang sudah memilih atau sedang memproses suara tidak dapat dihapus.' });
+      }
+
+      const usersStore = stores.users();
+      const normalized = user.usernameNormalized || normalizeUsername(user.username);
+      const mappingKey = 'username/' + normalized;
+      let mappingDeleted = false;
+
+      try {
+        const latestUser = await getUserById(id);
+        if (!latestUser) return json(404, { error: 'Pemilih tidak ditemukan.' });
+
+        const sessionStore = stores.sessions();
+        const sessionList = await sessionStore.list({ prefix: 'token/' });
+        for (const item of sessionList.blobs || []) {
+          const session = await sessionStore.get(item.key, { type: 'json', consistency: 'strong' });
+          if (session?.kind === 'voter' && session.id === id) {
+            await sessionStore.delete(item.key);
+          }
+        }
+
+        const mapping = await usersStore.get(mappingKey, { type: 'json', consistency: 'strong' });
+        if (mapping?.id === id) {
+          await usersStore.delete(mappingKey);
+          mappingDeleted = true;
+        }
+        await usersStore.delete('user/' + id);
+        await writeAudit('voter.deleted', id, { username: latestUser.username }).catch(() => {});
+        return json(200, { ok: true, message: 'Akun pemilih dihapus permanen. Akun yang sudah memilih tidak dapat dihapus.' });
+      } catch (error) {
+        const remainingUser = await getUserById(id).catch(() => null);
+        if (remainingUser && mappingDeleted) {
+          await usersStore.setJSON(mappingKey, { id }, { onlyIfNew: true }).catch(() => {});
+        }
+        throw error;
+      } finally {
+        await votesStore.delete(participationKey).catch(() => {});
+      }
     }
 
     if (method === 'POST' && route === '/admin/users/activate') {

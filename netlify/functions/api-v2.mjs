@@ -417,13 +417,16 @@ async function archiveAndResetElection() {
   };
 }
 
-async function ensureAdmin() {
+async function ensureAdmin(initialPassword = '') {
   const store = stores.admins();
   let admin = await store.get('main', { type: 'json', consistency: 'strong' });
   if (admin) return admin;
 
-  const bootstrap = configuredAdminBootstrapPasswords()[0] || '';
-  if (bootstrap.length < 8) return null;
+  // Initialize the first admin only when the submitted password matches one
+  // of the configured bootstrap secrets, including legacy Netlify variable names.
+  const bootstrap = configuredAdminBootstrapPasswords()
+    .find(value => timingSafeTextEqual(initialPassword, value));
+  if (!bootstrap) return null;
 
   const seed = {
     username: 'admin_dpt',
@@ -848,8 +851,13 @@ async function handleEvent(event) {
 
     if (method === 'POST' && route === '/admin/login') {
       const body = parseBody(event);
-      const admin = await ensureAdmin();
-      if (!admin) return json(503, { error: 'Akun admin belum disiapkan. Periksa ADMIN_BOOTSTRAP_PASSWORD pada Environment variables Netlify.' });
+      const admin = await ensureAdmin(body.password);
+      if (!admin) {
+        if (!configuredAdminBootstrapPasswords().length) {
+          return json(503, { error: 'Akun admin belum disiapkan. Atur password bootstrap pada Environment variables Netlify.' });
+        }
+        return json(401, { error: 'Username atau password admin tidak cocok.' });
+      }
       if (normalizeUsername(body.username) !== normalizeUsername(admin.username) || !(await verifyAdminPassword(body.password, admin))) {
         return json(401, { error: 'Username atau password admin tidak cocok.' });
       }

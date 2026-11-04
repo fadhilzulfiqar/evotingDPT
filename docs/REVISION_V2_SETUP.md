@@ -2,8 +2,8 @@
 
 ## Jalur aplikasi
 
-- Pemilih: `/v2`
-- Admin: `/admin-v2`
+- Portal pemilih utama: `/` (alias `/v2`)
+- Dashboard admin utama: `/admin` (alias `/admin-v2`)
 - API v2: `/api/v2/*`
 - API v1 tetap tersedia sampai cutover disetujui.
 

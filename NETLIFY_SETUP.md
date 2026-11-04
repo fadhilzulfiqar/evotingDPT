@@ -1,56 +1,52 @@
-# Deploy EvotingDPT ke Netlify
+# Deploy E-Voting DPT ke Netlify
 
-Versi ini memakai frontend statis di folder `public/`, Netlify Functions sebagai API, dan Netlify Blobs sebagai penyimpanan pusat.
+Aplikasi menggunakan frontend statis, Netlify Functions, dan Netlify Blobs. Tidak memerlukan database eksternal.
 
-## 1. Import repository
+## 1. Hubungkan repository
+
 1. Masuk ke Netlify.
 2. Pilih **Add new project / Import an existing project**.
-3. Pilih GitHub dan repository `fadhilzulfiqar/evotingDPT`.
-4. Branch produksi: `main`.
-5. Netlify akan membaca `netlify.toml` otomatis.
-6. Publish directory: `public`.
-7. Functions directory: `netlify/functions`.
+3. Hubungkan repository `fadhilzulfiqar/evotingDPT`.
+4. Pilih branch produksi yang telah disetujui untuk site `evotedpt`.
+5. Publish directory: `public`.
+6. Functions directory: `netlify/functions`.
 
-## 2. Password admin awal
-Sebelum login admin pertama kali, disarankan menambahkan environment variable:
+## 2. Password admin
+
+Jika store administrator belum memiliki data admin, atur environment variable:
 
 - Key: `ADMIN_BOOTSTRAP_PASSWORD`
-- Value: password admin kuat minimal 8 karakter
+- Value: password kuat minimal 8 karakter.
 
-Username admin tetap: `admin_dpt`.
+Username admin: `admin_dpt`. Jangan menaruh password di GitHub atau membagikannya di chat.
 
-Setelah berhasil masuk, password dapat diganti lagi dari menu **Keamanan Admin**.
+## 3. Halaman dan API
 
-## 3. URL
-Setelah deploy, Netlify memberi alamat seperti:
+- Pemilih: `/v2`
+- Dashboard admin: `/admin-v2`
+- Health check: `/api/v2/health`
 
-- Pemilih: `https://nama-site.netlify.app/`
-- Admin: `https://nama-site.netlify.app/admin.html`
-- Health check API: `https://nama-site.netlify.app/api/health`
+## 4. Pengelolaan pemilih
 
-## 4. Cara menambah pemilih
-Dari halaman Admin, pemilih dapat ditambahkan satu per satu atau melalui import massal dengan format:
+Admin dapat menambahkan akun satu per satu atau impor massal dengan format:
 
-`Nama | NIT | Password`
+`Nama | Username | Password`
 
-Contoh:
+## 5. Model surat suara
 
-`Andi Saputra | 23123456 | DPT-A7K92`
-
-## 5. Mekanisme suara
-- Login diperiksa di server, bukan di browser.
-- Satu NIT hanya dapat memiliki satu status penggunaan hak suara.
-- Surat suara disimpan terpisah dari data pemilih setelah proses selesai.
-- Dashboard admin menampilkan jumlah suara dan status sudah/belum memilih, bukan pilihan masing-masing NIT.
-- Reset Data Latihan hanya menghapus data pemungutan suara; daftar pemilih tetap ada.
+Setiap pemilih mengirim satu pilihan Ketua dan satu pilihan Wakil dalam satu request. Backend memvalidasi kedua calon, membuat klaim partisipasi per akun menggunakan conditional create, lalu menyimpan ballot tanpa ID pemilih. Token pemrosesan sementara dihapus setelah partisipasi berstatus selesai.
 
 ## 6. Sebelum pemilihan resmi
-1. Isi nama paslon, visi, misi, slogan, dan foto.
-2. Import daftar NIT dan password.
-3. Lakukan simulasi dengan beberapa akun.
-4. Pastikan akun yang sudah memilih tidak bisa memilih lagi dari browser/perangkat lain.
-5. Gunakan **Reset Data Latihan** setelah simulasi.
-6. Pastikan perolehan suara kembali 0 dan semua pemilih berstatus BELUM MEMILIH.
-7. Baru buka status pemilihan untuk pemungutan suara resmi.
 
-> Catatan: jangan menyimpan daftar password pemilih dalam repository GitHub publik. Masukkan daftar melalui dashboard admin setelah site Netlify aktif.
+1. Isi nama dan foto dua calon Ketua serta dua calon Wakil.
+2. Impor dan verifikasi daftar akun pemilih.
+3. Lakukan uji login lintas perangkat.
+4. Uji pengiriman suara ganda dari akun/perangkat berbeda.
+5. Jalankan load test pada deploy preview dengan akun uji khusus.
+6. Pastikan tidak ada transaksi tertunda dan jumlah partisipasi selesai sama dengan jumlah ballot.
+7. Arsipkan data trial sebelum reset.
+8. Buka pemilihan resmi hanya setelah seluruh pemeriksaan disetujui panitia.
+
+## 7. Batasan teknis
+
+Netlify Blobs adalah object storage, bukan database relasional dengan transaksi multi-record. Conditional writes digunakan untuk mengklaim hak pilih per akun dan mengurangi risiko duplikasi. Pengujian beban pada deployment aktual tetap wajib, terutama untuk pengiriman serentak.

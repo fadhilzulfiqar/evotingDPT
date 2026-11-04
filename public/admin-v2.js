@@ -379,6 +379,6 @@
     loadStats().catch(() => {});
   }
 
-  window.EvotingAdmin = {openTab,saveConfig,pickPhoto,addVoter,bulkImport,editUser,deactivateUser,activateUser,archiveLegacy,resetElection,changePassword,exportCsv,filterVoters:renderVoterRows};
+  window.EvotingAdmin = {openTab:renderTab,saveConfig,pickPhoto,addVoter,bulkImport,editUser,deactivateUser,activateUser,archiveLegacy,resetElection,changePassword,exportCsv,filterVoters:renderVoterRows};
   init();
 })();

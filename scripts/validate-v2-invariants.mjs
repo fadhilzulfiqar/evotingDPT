@@ -36,7 +36,7 @@ for (const token of ["'BEGIN'", "FOR SHARE", "FOR UPDATE", "INSERT INTO evoting_
   assert.ok(voteRoute.includes(token), 'Vote transaction missing: ' + token);
 }
 assert.ok(voteRoute.indexOf('INSERT INTO evoting_v2_participation') < voteRoute.indexOf('INSERT INTO evoting_v2_ballots'));
-assert.match(api, /UNIQUE \(election_id, voter_id\)/);
+assert.match(api, /PRIMARY KEY \(election_id, voter_id\)/);
 assert.match(api, /reconciliationOk/);
 assert.match(api, /archiveReadbackVerified/);
 assert.match(api, /verifyLegacyArchiveStillCurrent/);
@@ -53,7 +53,7 @@ assert.match(adminApp, /reconciliationOk/);
 assert.match(adminApp, /legacy-archive\/status/);
 assert.doesNotMatch(adminApp, /pilihan per pemilih|pilihan setiap akun/i);
 
-assert.match(loadTest, /deploy-preview-\\d+--/);
+assert.match(loadTest, /deploy-preview-\d+--/);
 assert.match(loadTest, /concurrentDuplicateGuardPassed/);
 assert.match(loadTest, /sameRequestRetryPassed/);
 assert.match(loadTest, /reconciliationPassed/);

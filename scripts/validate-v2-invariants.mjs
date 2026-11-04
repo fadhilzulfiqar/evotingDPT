@@ -53,7 +53,7 @@ assert.match(adminApp, /reconciliationOk/);
 assert.match(adminApp, /legacy-archive\/status/);
 assert.doesNotMatch(adminApp, /pilihan per pemilih|pilihan setiap akun/i);
 
-assert.match(loadTest, /deploy-preview-\d+--/);
+assert.ok(loadTest.includes('deploy-preview-\\d+--'));
 assert.match(loadTest, /concurrentDuplicateGuardPassed/);
 assert.match(loadTest, /sameRequestRetryPassed/);
 assert.match(loadTest, /reconciliationPassed/);

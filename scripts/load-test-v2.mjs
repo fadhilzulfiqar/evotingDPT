@@ -154,7 +154,9 @@ try {
   const concurrentDuplicateGuardPassed = raceSuccesses === 1 && raceConflicts === 1;
 
   const retry = await cast(mainBallots[0].session, mainBallots[0].chair, mainBallots[0].vice, mainBallots[0].key);
-  const sameRequestRetryPassed = retry.status === 200 && retry.body.repeated === true;
+  const retryMeResponse = await request('/api/v2/me', { headers: { cookie: mainBallots[0].session.cookie } });
+  const retryMe = await readJson(retryMeResponse);
+  const sameRequestRetryPassed = retry.status === 409 && retryMe.user?.hasVoted === true;
 
   const conflictingRetry = await cast(
     mainBallots[0].session,

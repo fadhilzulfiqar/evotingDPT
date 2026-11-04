@@ -27,21 +27,21 @@
   function statCard(label, value, note) {
     return '<div class="admin-stat"><span>' + esc(label) + '</span><strong>' + esc(value) + '</strong><small>' + esc(note) + '</small></div>';
   }
-  function statusLabel(status) { return status === 'open' ? 'DIBUKA' : status === 'closed' ? 'DITUTUP' : 'BELUM DIMULAI'; }
+  function statusLabel(status) { return status === 'open' ? 'DIBUKA' : status === 'closing' ? 'PENUTUPAN' : status === 'closed' ? 'DITUTUP' : 'BELUM DIMULAI'; }
 
   function renderOverview() {
-    const setup = stats.setupRequired;
     let html = heading('RINGKASAN PEMILIHAN', 'Dashboard utama', 'Pantau partisipasi pemilih dan kesiapan pemungutan suara.');
-    if (setup) html += '<div class="notice-error">PostgreSQL belum terhubung. Data calon dan akun dapat disiapkan, tetapi pemilihan tidak dapat dibuka sebelum DATABASE_URL dikonfigurasi pada Netlify.</div>';
     html += '<div class="admin-content-grid">';
     html += statCard('TOTAL AKUN', stats.total, 'Seluruh akun terdaftar');
     html += statCard('AKUN AKTIF', stats.activeTotal, 'Memiliki hak untuk login');
-    html += statCard('SUDAH MEMILIH', stats.voted == null ? '—' : stats.voted, 'Partisipasi tercatat');
-    html += statCard('BELUM MEMILIH', stats.remaining == null ? '—' : stats.remaining, 'Akun aktif yang belum memilih');
-    html += statCard('PARTISIPASI', stats.participation == null ? '—' : stats.participation + '%', 'Persentase pemilih aktif');
+    html += statCard('SUDAH MEMILIH', stats.voted, 'Partisipasi selesai tercatat');
+    html += statCard('BELUM MEMILIH', stats.remaining, 'Akun aktif yang belum memilih');
+    html += statCard('SEDANG DIPROSES', stats.pending || 0, 'Transaksi yang perlu diselesaikan');
+    html += statCard('PARTISIPASI', stats.participation + '%', 'Persentase pemilih aktif');
     html += statCard('STATUS', statusLabel(stats.config.status), 'Status pemungutan suara');
     html += '</div><section class="admin-panel"><div class="eyebrow">KONDISI SISTEM</div><h2>Ringkasan teknis</h2>';
-    html += '<p>Database suara: <b>' + (setup ? 'Belum terhubung' : 'PostgreSQL') + '</b><br>Autentikasi dan konfigurasi: <b>Netlify Blobs</b><br>Skema: <b>Ketua dan Wakil dipilih terpisah</b></p>';
+    html += '<p>Penyimpanan akun, partisipasi, dan surat suara: <b>Netlify Blobs</b><br>Skema: <b>Ketua dan Wakil dipilih terpisah</b><br>Kerahasiaan: <b>identitas dan pilihan disimpan terpisah</b></p>';
+    if (stats.pending) html += '<div class="notice-error">Ada transaksi suara yang sedang diproses. Selesaikan pemulihan sebelum menutup atau mereset pemilihan.</div>';
     html += '<div class="admin-actions"><button class="small-button gold" type="button" onclick="window.EvotingAdmin.openTab(\'candidates\')">Kelola data calon</button><button class="small-button" type="button" onclick="window.EvotingAdmin.openTab(\'voters\')">Kelola pemilih</button><button class="small-button" type="button" onclick="window.EvotingAdmin.openTab(\'results\')">Lihat rekap suara</button></div></section>';
     $('#adminContent').innerHTML = html;
   }
@@ -72,7 +72,7 @@
     html += '<div class="candidate-admin-grid">';
     draftConfig.candidates.ketua.forEach((candidate, index) => { html += candidateEditor(candidate, 'ketua', index, locked); });
     draftConfig.candidates.wakil.forEach((candidate, index) => { html += candidateEditor(candidate, 'wakil', index, locked); });
-    html += '</div><section class="admin-panel"><p>Ketentuan sebelum membuka pemilihan: nama dan foto seluruh empat calon harus lengkap, serta PostgreSQL harus terhubung. Setelah status dibuka, identitas calon terkunci.</p><div class="admin-actions"><button class="small-button gold" type="button" onclick="window.EvotingAdmin.saveConfig()">Simpan seluruh perubahan</button></div></section>';
+    html += '</div><section class="admin-panel"><p>Ketentuan sebelum membuka pemilihan: nama dan foto seluruh empat calon harus lengkap. Penyimpanan menggunakan Netlify Blobs. Setelah status dibuka, identitas calon terkunci.</p><div class="admin-actions"><button class="small-button gold" type="button" onclick="window.EvotingAdmin.saveConfig()">Simpan seluruh perubahan</button></div></section>';
     $('#adminContent').innerHTML = html; $('#cfgStatus').value = draftConfig.status || 'scheduled';
   }
 
@@ -83,12 +83,12 @@
     let html = '';
     rows.forEach((user, index) => {
       const state = !user.active ? '<span class="status-pill disabled">DINONAKTIFKAN</span>'
-        : user.hasVoted === null ? '<span class="status-pill pending">MENUNGGU DATABASE</span>'
+        : user.votePending ? '<span class="status-pill pending">SEDANG DIPROSES</span>'
         : user.hasVoted ? '<span class="status-pill done">SUDAH MEMILIH</span>'
         : '<span class="status-pill pending">BELUM MEMILIH</span>';
       const actions = user.active
         ? '<button class="small-button" type="button" data-action="edit" data-id="' + esc(user.id) + '">Edit</button> ' +
-          (user.hasVoted === null ? '<span class="inline-note">Menunggu database</span>' : user.hasVoted ? '<span class="inline-note">Hak suara digunakan</span>' : '<button class="small-button warn" type="button" data-action="deactivate" data-id="' + esc(user.id) + '">Nonaktifkan</button>')
+          (user.votePending ? '<span class="inline-note">Menunggu penyelesaian</span>' : user.hasVoted ? '<span class="inline-note">Hak suara digunakan</span>' : '<button class="small-button warn" type="button" data-action="deactivate" data-id="' + esc(user.id) + '">Nonaktifkan</button>')
         : '<button class="small-button" type="button" data-action="activate" data-id="' + esc(user.id) + '">Aktifkan kembali</button>';
       html += '<tr><td>' + (index + 1) + '</td><td>' + esc(user.name) + '</td><td>' + esc(user.username) + '</td><td>' + state + '</td><td>' + (user.votedAt ? esc(new Date(user.votedAt).toLocaleString('id-ID')) : '—') + '</td><td>' + actions + '</td></tr>';
     });
@@ -127,8 +127,7 @@
 
   function renderResults() {
     let html = heading('HASIL PEMILIHAN', 'Rekapitulasi suara', 'Perolehan suara Ketua dan Wakil dihitung dan ditampilkan secara terpisah.');
-    if (stats.setupRequired) html += '<div class="notice-error">Rekap belum tersedia karena PostgreSQL belum dikonfigurasi.</div>';
-    else if (!stats.resultsVisible) html += '<div class="notice-error">Perolehan suara setiap calon disembunyikan selama pemungutan suara berlangsung untuk mengurangi potensi bias. Status partisipasi pemilih tetap dapat dipantau. Rekap akan dibuka setelah admin menutup pemilihan.</div>';
+    if (!stats.resultsVisible) html += '<div class="notice-error">Perolehan suara setiap calon disembunyikan selama pemungutan suara berlangsung atau ketika transaksi masih dipulihkan. Rekap akan dibuka setelah pemilihan ditutup dan seluruh transaksi selesai.</div>';
     else {
       html += '<div class="admin-content-grid">' + statCard('TOTAL SURAT SUARA', stats.totalBallots, 'Satu surat suara berisi pilihan dua jabatan') + statCard('SUDAH MEMILIH', stats.voted, 'Akun pemilih aktif') + statCard('BELUM MEMILIH', stats.remaining, 'Akun pemilih aktif') + '</div>';
       html += renderResultGroup('ketua', stats.config.candidates.ketua, stats.chairCounts);
@@ -155,8 +154,8 @@
     let html = heading('PENGATURAN SISTEM', 'Keamanan dan arsip', 'Kelola kredensial administrator, arsip data uji coba lama, dan reset pemilihan v2.');
     html += '<section class="admin-panel"><div class="eyebrow">KREDENSIAL ADMIN</div><h2>Ganti password admin</h2><div class="admin-form-grid"><label>Password saat ini<input id="oldAdminPassword" type="password" autocomplete="current-password"></label><label>Password baru<input id="newAdminPassword" type="password" autocomplete="new-password" minlength="8"></label></div><div class="admin-actions"><button class="small-button gold" type="button" onclick="window.EvotingAdmin.changePassword()">Ganti password</button></div></section>';
     html += '<section class="admin-panel"><div class="eyebrow">PRESERVASI DATA LAMA</div><h2>Arsipkan data trial v1</h2><p>Menyalin konfigurasi lama serta record surat suara trial dari Netlify Blobs ke store arsip privat. Data sumber tidak dihapus. Akun pemilih tetap berada di penyimpanan semula. Sebelum backup, tutup pemilihan trial lama melalui <a href="/admin" target="_blank" rel="noopener">dashboard admin lama</a>. Backend akan menolak backup jika status lama masih OPEN atau datanya berubah selama proses.</p><div class="notice-error">Arsip legacy dapat memuat struktur internal lama yang menghubungkan voter-lock dengan pilihan. Isi arsip tidak akan ditampilkan pada dashboard atau ekspor.</div><div class="admin-actions"><button class="small-button gold" type="button" onclick="window.EvotingAdmin.archiveLegacy()">Buat backup data trial lama</button></div></section>';
-    html += '<section class="admin-panel"><div class="eyebrow">RESET PEMILIHAN V2</div><h2>Reset dengan arsip otomatis</h2><p>Hanya dapat dilakukan setelah pemilihan ditutup. Sebelum menghapus data aktif v2, backend menyalin surat suara dan status partisipasi ke tabel arsip PostgreSQL. Akun pemilih tidak dihapus.</p><div class="admin-actions"><button class="small-button warn" type="button" onclick="window.EvotingAdmin.resetElection()">Arsipkan dan reset v2</button></div></section>';
-    html += '<section class="admin-panel"><div class="eyebrow">STATUS INFRASTRUKTUR</div><h2>Koneksi penyimpanan</h2><p>Database suara: <b>' + (stats.setupRequired ? 'Belum terhubung' : 'PostgreSQL') + '</b><br>Data akun, sesi, foto, dan konfigurasi: <b>Netlify Blobs</b><br>Lingkungan aplikasi: <b>v2 independent ballot</b></p></section>';
+    html += '<section class="admin-panel"><div class="eyebrow">RESET PEMILIHAN V2</div><h2>Reset dengan arsip otomatis</h2><p>Hanya dapat dilakukan setelah pemilihan ditutup dan tidak ada transaksi tertunda. Backend menyalin serta memverifikasi surat suara dan partisipasi pada arsip privat Netlify Blobs sebelum menghapus data aktif. Akun pemilih tidak dihapus.</p><div class="admin-actions"><button class="small-button warn" type="button" onclick="window.EvotingAdmin.resetElection()">Arsipkan dan reset v2</button></div></section>';
+    html += '<section class="admin-panel"><div class="eyebrow">STATUS INFRASTRUKTUR</div><h2>Koneksi penyimpanan</h2><p>Penyimpanan suara, partisipasi, akun, sesi, dan konfigurasi: <b>Netlify Blobs</b><br>Lingkungan aplikasi: <b>v2 independent ballot</b></p></section>';
     $('#adminContent').innerHTML = html;
   }
 
@@ -269,8 +268,8 @@
   }
 
   async function resetElection() {
-    if (stats.config.status === 'open') return feedback('Tutup pemilihan terlebih dahulu sebelum reset.');
-    if (!confirm('Reset akan mengarsipkan surat suara dan partisipasi v2, lalu mengosongkan hasil aktif. Akun pemilih tidak dihapus. Lanjutkan?')) return;
+    if (stats.config.status === 'open' || stats.config.status === 'closing') return feedback('Tutup pemilihan terlebih dahulu sebelum reset.');
+    if (!confirm('Reset akan mengarsipkan surat suara dan status partisipasi v2 ke Netlify Blobs, memverifikasi arsip, lalu mengosongkan hasil aktif. Akun pemilih tidak dihapus. Lanjutkan?')) return;
     if (!confirm('Konfirmasi akhir: pastikan arsip dan keputusan panitia sudah disetujui.')) return;
     try {
       const result = await api('/admin/reset-practice', { method:'POST', body:'{}' });
@@ -294,7 +293,7 @@
       ...stats.config.candidates.ketua.map(candidate => ['Ketua',candidate.number,candidate.name,stats.chairCounts[candidate.id]||0]),
       ...stats.config.candidates.wakil.map(candidate => ['Wakil',candidate.number,candidate.name,stats.viceCounts[candidate.id]||0]),
       [],['DAFTAR PARTISIPASI'],['NAMA PEMILIH','USERNAME','STATUS','WAKTU']];
-    stats.users.forEach(user => rows.push([user.name,user.username,!user.active?'Dinonaktifkan':user.hasVoted?'Sudah memilih':'Belum memilih',user.votedAt?new Date(user.votedAt).toLocaleString('id-ID'):'']));
+    stats.users.forEach(user => rows.push([user.name,user.username,!user.active?'Dinonaktifkan':user.votePending?'Sedang diproses':user.hasVoted?'Sudah memilih':'Belum memilih',user.votedAt?new Date(user.votedAt).toLocaleString('id-ID'):'']));
     const csv = rows.map(row => row.map(value => '"' + String(value == null ? '' : value).replace(/"/g,'""') + '"').join(',')).join('\r\n');
     const blob = new Blob(['\ufeff' + csv], {type:'text/csv;charset=utf-8'});
     const url = URL.createObjectURL(blob); const link = document.createElement('a');

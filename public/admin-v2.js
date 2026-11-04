@@ -82,23 +82,25 @@
     const rows = stats.users.filter(user => (String(user.name) + ' ' + String(user.username)).toLowerCase().includes(search));
     let html = '';
     rows.forEach((user, index) => {
-      const state = !user.active ? '<span class="status-pill disabled">DINONAKTIFKAN</span>'
-        : user.votePending ? '<span class="status-pill pending">SEDANG DIPROSES</span>'
+      const state = user.votePending
+        ? '<span class="status-pill pending">TRANSAKSI SUARA DIPROSES</span>'
+        : !user.active ? '<span class="status-pill disabled">DINONAKTIFKAN</span>'
         : user.hasVoted ? '<span class="status-pill done">SUDAH MEMILIH</span>'
         : '<span class="status-pill pending">BELUM MEMILIH</span>';
-      const canDelete = !user.votePending && !user.hasVoted;
-      const deleteButton = canDelete ? '<button class="small-button warn" type="button" data-action="delete" data-id="' + esc(user.id) + '">Hapus</button>' : '';
+      const deleteButton = user.votePending
+        ? (user.active ? '<button class="small-button warn" type="button" data-action="delete" data-id="' + esc(user.id) + '">Kunci akun</button>' : '<span class="inline-note">Tunggu transaksi selesai</span>')
+        : '<button class="small-button warn" type="button" data-action="delete" data-id="' + esc(user.id) + '">' + (user.hasVoted ? 'Hapus akun' : 'Hapus') + '</button>';
       const actions = user.active
         ? '<button class="small-button" type="button" data-action="edit" data-id="' + esc(user.id) + '">Edit</button> ' +
-          (user.votePending ? '<span class="inline-note">Menunggu penyelesaian</span>' : user.hasVoted ? '<span class="inline-note">Hak suara digunakan</span>' : '<button class="small-button warn" type="button" data-action="deactivate" data-id="' + esc(user.id) + '">Nonaktifkan</button> ') + deleteButton
-        : '<button class="small-button" type="button" data-action="activate" data-id="' + esc(user.id) + '">Aktifkan kembali</button> ' + deleteButton;
+          (user.votePending ? '<span class="inline-note">Hak akses dapat dikunci</span>' : user.hasVoted ? '<span class="inline-note">Hak suara digunakan</span>' : '<button class="small-button warn" type="button" data-action="deactivate" data-id="' + esc(user.id) + '">Nonaktifkan</button> ') + deleteButton
+        : (user.votePending ? '<span class="inline-note">Akun dikunci; menunggu transaksi</span>' : '<button class="small-button" type="button" data-action="activate" data-id="' + esc(user.id) + '">Aktifkan kembali</button> ') + deleteButton;
       html += '<tr><td>' + (index + 1) + '</td><td>' + esc(user.name) + '</td><td>' + esc(user.username) + '</td><td>' + state + '</td><td>' + (user.votedAt ? esc(new Date(user.votedAt).toLocaleString('id-ID')) : '—') + '</td><td>' + actions + '</td></tr>';
     });
     $('#voterRows').innerHTML = html || '<tr><td colspan="6">Tidak ada data pemilih.</td></tr>';
   }
 
   function renderVoters() {
-    let html = heading('MANAJEMEN PEMILIH', 'Data pemilih', 'Akun dapat ditambahkan saat pemilihan berlangsung. Akun yang belum memilih dapat dinonaktifkan atau dihapus; akun yang sudah memilih dilindungi.');
+    let html = heading('MANAJEMEN PEMILIH', 'Data pemilih', 'Admin dapat mengunci dan menghapus akun selama pemilihan berlangsung. Jika pemilih sudah memberikan suara, surat suara anonim dan penanda hak pilih tetap dipertahankan.');
     html += '<div class="admin-content-grid"><section class="admin-panel"><div class="eyebrow">TAMBAH AKUN</div><h2>Pemilih baru</h2><div class="admin-form-grid"><label class="full">Nama lengkap<input id="newName" placeholder="Nama pemilih"></label><label>Username<input id="newUsername" placeholder="Username"></label><label>Password<input id="newPassword" type="text" placeholder="Password"></label></div><div class="admin-actions"><button class="small-button gold" type="button" onclick="window.EvotingAdmin.addVoter()">Tambah akun</button></div></section>';
     html += '<section class="admin-panel"><div class="eyebrow">IMPOR MASSAL</div><h2>Daftar pemilih</h2><p>Format per baris: Nama | Username | Password</p><textarea id="bulkRows" class="admin-input" rows="6" placeholder="Nama Pemilih | 23123456 | DPT-A7K92"></textarea><div class="admin-actions"><button class="small-button" type="button" onclick="window.EvotingAdmin.bulkImport()">Impor daftar</button></div></section></div>';
     html += '<section class="admin-panel"><div class="panel-heading"><div><div class="eyebrow">STATUS PARTISIPASI</div><h2>Daftar akun dan status pemilihan</h2></div><input id="voterSearch" class="search-box" placeholder="Cari nama atau username..." oninput="window.EvotingAdmin.filterVoters()"></div>';
@@ -156,9 +158,9 @@
   function renderSettings() {
     let html = heading('PENGATURAN SISTEM', 'Keamanan dan reset', 'Atur kredensial admin dan kelola hasil pemilihan.');
     html += '<section class="admin-panel"><div class="eyebrow">KREDENSIAL ADMIN</div><h2>Ganti password admin</h2><div class="admin-form-grid"><label>Password saat ini<input id="oldAdminPassword" type="password" autocomplete="current-password"></label><label>Password baru<input id="newAdminPassword" type="password" autocomplete="new-password" minlength="12"></label></div><div class="admin-actions"><button class="small-button gold" type="button" onclick="window.EvotingAdmin.changePassword()">Ganti password</button></div><p class="inline-note">Gunakan password minimal 12 karakter. Kode bootstrap dapat digunakan untuk pemulihan jika password admin terlupa.</p></section>';
-    const canReset = stats.deployContext === 'production' && stats.config.status === 'closed' && Number(stats.pending || 0) === 0;
-    const resetLabel = stats.deployContext !== 'production' ? 'Reset hanya tersedia di Production' : stats.config.status !== 'closed' ? 'Tutup pemilihan untuk reset' : Number(stats.pending || 0) > 0 ? 'Selesaikan transaksi tertunda' : 'Reset hasil pemilihan';
-    html += '<section class="admin-panel"><div class="eyebrow">RESET PEMILIHAN</div><h2>Reset hasil pemilihan</h2><p>Reset menghapus permanen surat suara dan status partisipasi aktif tanpa membuat arsip. Jumlah akun aktif dan pemilih yang belum memilih tidak menghalangi reset. Seluruh akun pemilih, data calon, dan riwayat audit tetap dipertahankan. Syaratnya pemilihan berstatus DITUTUP dan tidak ada transaksi suara tertunda.</p><p class="inline-note">Deploy context: <b>' + esc(stats.deployContext || 'belum diatur') + '</b> · Penyimpanan aktif: <b>' + esc(stats.storageNamespace || 'preview') + '</b></p><div class="admin-actions"><button class="small-button warn" type="button" ' + (canReset ? '' : 'disabled') + ' onclick="window.EvotingAdmin.resetElection()">' + resetLabel + '</button></div></section>';
+    const canReset = stats.deployContext === 'production' && stats.config.status === 'closed';
+    const resetLabel = stats.deployContext !== 'production' ? 'Reset hanya tersedia di Production' : stats.config.status !== 'closed' ? 'Tutup pemilihan untuk reset' : 'Reset hasil pemilihan';
+    html += '<section class="admin-panel"><div class="eyebrow">RESET PEMILIHAN</div><h2>Reset hasil pemilihan</h2><p>Reset dapat dijalankan setelah pemilihan berstatus DITUTUP. Tidak disyaratkan semua pemilih sudah menggunakan hak suara, dan akun aktif maupun akun yang belum memilih tidak menghalangi reset. Sistem akan mencoba menyelesaikan transaksi suara yang masih tertunda; reset dibatalkan hanya jika masih ada transaksi yang belum dapat dipastikan. Akun pemilih, data calon, dan riwayat audit tetap dipertahankan.</p><p class="inline-note">Deploy context: <b>' + esc(stats.deployContext || 'belum diatur') + '</b> · Penyimpanan aktif: <b>' + esc(stats.storageNamespace || 'preview') + '</b></p><div class="admin-actions"><button class="small-button warn" type="button" ' + (canReset ? '' : 'disabled') + ' onclick="window.EvotingAdmin.resetElection()">' + resetLabel + '</button></div></section>';
     html += '<section class="admin-panel"><div class="eyebrow">INFRASTRUKTUR</div><h2>Penyimpanan aplikasi</h2><p>Platform: <b>Netlify Functions 2.0</b><br>Object storage: <b>Netlify Blobs</b><br>Deploy context: <b>' + esc(stats.deployContext || 'belum diatur') + '</b><br>Namespace data: <b>' + esc(stats.storageNamespace || 'preview') + '</b><br>Skema suara: <b>surat suara anonim dan status partisipasi terpisah</b></p><div class="notice-error">Reset hanya menghapus surat suara aktif dan status partisipasi. Akun pemilih serta konfigurasi calon tidak dihapus.</div></section>';
     $('#adminContent').innerHTML = html;
   }
@@ -289,13 +291,27 @@
 
   async function deleteVoter(id) {
     const user = stats.users.find(item => item.id === id);
-    if (!user || user.hasVoted || user.votePending) return feedback('Akun yang sudah memilih atau sedang memproses suara tidak dapat dihapus.');
-    if (!confirm('Hapus permanen akun ' + user.name + ' (' + user.username + ')? Tindakan ini hanya tersedia untuk akun yang belum memilih. Akun dan sesi login akan dihapus, sedangkan riwayat audit tetap disimpan.')) return;
+    if (!user) return;
+    let message;
+    if (user.votePending) {
+      message = 'Akun ' + user.name + ' akan langsung dinonaktifkan dan semua sesi login dicabut. Transaksi suara yang sudah berjalan akan diselesaikan; setelah status transaksi selesai, hapus akun kembali untuk menghapus data login.';
+    } else if (user.hasVoted) {
+      message = 'Hapus akun login ' + user.name + ' (' + user.username + ')? Surat suara anonim dan penanda bahwa hak pilih sudah digunakan TETAP disimpan. Akun ini tidak dapat login lagi.';
+    } else {
+      message = 'Hapus permanen akun ' + user.name + ' (' + user.username + ')? Akun dan sesi login akan dihapus. Tindakan ini tidak dapat dibatalkan.';
+    }
+    if (!confirm(message)) return;
     try {
-      await api('/admin/users/delete', { method:'POST', body:JSON.stringify({id}) });
+      const result = await api('/admin/users/delete', { method:'POST', body:JSON.stringify({id}) });
       await loadStats();
       renderTab('voters');
-      feedback('Akun pemilih berhasil dihapus permanen.', 'success');
+      if (result.deferred) {
+        feedback('Akun langsung dikunci dan sesi login dicabut. Transaksi yang sedang berjalan akan diselesaikan; hapus kembali setelah status transaksi selesai.', 'success');
+      } else if (result.hadVoted) {
+        feedback('Akun login dihapus. Surat suara anonim dan status hak pilih tetap dipertahankan.', 'success');
+      } else {
+        feedback('Akun pemilih berhasil dihapus.', 'success');
+      }
     } catch (error) { feedback(error.message); }
   }
 
@@ -320,7 +336,6 @@
   async function resetElection() {
     if (stats.deployContext !== 'production') return feedback('Reset hanya tersedia pada website Production.');
     if (stats.config.status !== 'closed') return feedback('Pemilihan harus berstatus DITUTUP sebelum reset.');
-    if (Number(stats.pending || 0) > 0) return feedback('Masih ada transaksi suara tertunda. Selesaikan terlebih dahulu sebelum reset.');
     if (!confirm('RESET PERMANEN: semua surat suara aktif dan status partisipasi akan dihapus tanpa arsip. Akun pemilih, data calon, dan riwayat audit tetap dipertahankan. Tindakan ini tidak dapat dibatalkan. Lanjutkan?')) return;
     try {
       const result = await api('/admin/reset-practice', { method:'POST', body:'{}' });

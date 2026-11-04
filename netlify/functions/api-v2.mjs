@@ -38,7 +38,10 @@ const storeName = name => STORE_PREFIX + name;
 const stores = {
   config: () => getStore(storeName('config')),
   users: () => getStore(storeName('users')),
-  votes: () => getStore(storeName('votes')),
+  // Vote records require read-after-delete correctness for reset and tally reads.
+  // Default Netlify Blobs consistency is eventual; strong store consistency
+  // prevents stale list() results from making a completed reset look incomplete.
+  votes: () => getStore({ name: storeName('votes'), consistency: 'strong' }),
   admins: () => getStore(storeName('admins')),
   sessions: () => getStore(storeName('sessions')),
   legacyArchive: () => getStore(storeName('archive'))
@@ -346,8 +349,8 @@ async function resetElectionData() {
     throw new Error('Konfigurasi pemilihan tidak dapat dikunci. Muat ulang dashboard lalu coba lagi.');
   }
 
-  // Increment the election version first. Any vote request still in flight
-  // will fail its final version check and cannot recreate a ballot after reset.
+  // Close the write window before deleting anything. The election version
+  // invalidates requests that are still trying to finalize a ballot.
   const resetVersion = Number(currentConfig.configVersion || 1) + 1;
   const barrier = await configStore.setJSON('v2/main', {
     ...currentConfig,
@@ -356,55 +359,62 @@ async function resetElectionData() {
   }, { onlyIfMatch: configEntry.etag });
 
   if (!barrier.modified) {
-    throw new Error('Konfigurasi berubah bersamaan. Muat ulang dashboard dan ulangi reset.');
+    throw new Error('Konfigurasi berubah bersamaan. Muat ulang dashboard dan coba reset kembali.');
   }
 
-  const [ballotList, participationList, pendingList] = await Promise.all([
-    votesStore.list({ prefix: 'v2/ballot/' }),
-    votesStore.list({ prefix: 'v2/participation/' }),
-    votesStore.list({ prefix: 'v2/pending/' })
-  ]);
-
+  const targets = [
+    { countKey: 'ballotRecordsDeleted', prefix: 'v2/ballot/' },
+    { countKey: 'participationRecordsDeleted', prefix: 'v2/participation/' },
+    { countKey: 'pendingRecordsDeleted', prefix: 'v2/pending/' }
+  ];
   const counts = {
-    ballotRecordsDeleted: (ballotList.blobs || []).length,
-    participationRecordsDeleted: (participationList.blobs || []).length,
-    pendingRecordsDeleted: (pendingList.blobs || []).length
+    ballotRecordsDeleted: 0,
+    participationRecordsDeleted: 0,
+    pendingRecordsDeleted: 0
   };
 
-  // Force reset after closure: do not wait for unused/active voter accounts,
-  // and discard any unfinished transaction records rather than blocking reset.
-  for (const item of ballotList.blobs || []) await votesStore.delete(item.key);
-  for (const item of participationList.blobs || []) await votesStore.delete(item.key);
-  for (const item of pendingList.blobs || []) await votesStore.delete(item.key);
+  // Do not touch v2/audit/, users, candidate configuration, or admin accounts.
+  // Strong consistency is essential here: with eventual consistency, list()
+  // can still return deleted keys for up to 60 seconds.
+  let remaining = [];
+  for (let pass = 0; pass < 5; pass += 1) {
+    let foundThisPass = 0;
+    for (const target of targets) {
+      const listing = await votesStore.list({ prefix: target.prefix });
+      const blobs = listing.blobs || [];
+      foundThisPass += blobs.length;
 
-  // Verify and sweep once more for a request that was already finishing while
-  // the reset barrier was being installed.
-  for (let pass = 0; pass < 2; pass += 1) {
-    const [ballots, participation, pending] = await Promise.all([
-      votesStore.list({ prefix: 'v2/ballot/' }),
-      votesStore.list({ prefix: 'v2/participation/' }),
-      votesStore.list({ prefix: 'v2/pending/' })
-    ]);
-    const leftovers = [
-      ...(ballots.blobs || []),
-      ...(participation.blobs || []),
-      ...(pending.blobs || [])
-    ];
-    if (!leftovers.length) break;
-    for (const item of leftovers) await votesStore.delete(item.key);
+      // Delete in small batches to avoid an unnecessarily large burst of writes.
+      for (let offset = 0; offset < blobs.length; offset += 25) {
+        const batch = blobs.slice(offset, offset + 25);
+        await Promise.all(batch.map(blob => votesStore.delete(blob.key)));
+        counts[target.countKey] += batch.length;
+      }
+    }
+
+    const verification = await Promise.all(
+      targets.map(async target => ({
+        prefix: target.prefix,
+        blobs: (await votesStore.list({ prefix: target.prefix })).blobs || []
+      }))
+    );
+    remaining = verification.flatMap(item => item.blobs.map(blob => blob.key));
+    if (remaining.length === 0) break;
+    if (foundThisPass === 0) break;
   }
 
-  const [ballotsAfter, participationAfter, pendingAfter] = await Promise.all([
-    votesStore.list({ prefix: 'v2/ballot/' }),
-    votesStore.list({ prefix: 'v2/participation/' }),
-    votesStore.list({ prefix: 'v2/pending/' })
-  ]);
-  if (
-    (ballotsAfter.blobs || []).length ||
-    (participationAfter.blobs || []).length ||
-    (pendingAfter.blobs || []).length
-  ) {
-    throw new Error('Reset belum tuntas: masih ada data suara aktif. Status pemilihan tetap DITUTUP; ulangi reset.');
+  if (remaining.length) {
+    const remainingByType = {
+      ballot: remaining.filter(key => key.startsWith('v2/ballot/')).length,
+      participation: remaining.filter(key => key.startsWith('v2/participation/')).length,
+      pending: remaining.filter(key => key.startsWith('v2/pending/')).length
+    };
+    throw new Error(
+      'Reset belum tuntas. Sisa data: ' +
+      remainingByType.ballot + ' surat suara, ' +
+      remainingByType.participation + ' status pemilih, ' +
+      remainingByType.pending + ' transaksi tertunda. Status tetap DITUTUP; coba reset kembali.'
+    );
   }
 
   const latestConfigEntry = await configStore.getWithMetadata('v2/main', {
@@ -432,7 +442,7 @@ async function resetElectionData() {
 
   return {
     ...counts,
-    message: 'Seluruh hasil dan transaksi suara aktif dihapus permanen tanpa arsip. Akun pemilih, data calon, dan riwayat audit tetap dipertahankan.'
+    message: 'Seluruh surat suara, status partisipasi, dan transaksi tertunda telah dihapus permanen tanpa arsip. Akun pemilih, data calon, dan audit tetap dipertahankan.'
   };
 }
 async function migratePreviewNamespaceToProduction() {

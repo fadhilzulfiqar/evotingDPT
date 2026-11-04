@@ -422,8 +422,8 @@ async function ensureAdmin() {
   let admin = await store.get('main', { type: 'json', consistency: 'strong' });
   if (admin) return admin;
 
-  const bootstrap = String(process.env.ADMIN_BOOTSTRAP_PASSWORD || '');
-  if (bootstrap.length < 12) return null;
+  const bootstrap = configuredAdminBootstrapPasswords()[0] || '';
+  if (bootstrap.length < 8) return null;
 
   const seed = {
     username: 'admin_dpt',
@@ -821,14 +821,14 @@ async function handleEvent(event) {
       const admin = await stores.admins().get('main', { type: 'json', consistency: 'strong' });
       return json(200, {
         setupRequired: !admin,
-        bootstrapConfigured: String(process.env.ADMIN_BOOTSTRAP_PASSWORD || '').length >= 12
+        bootstrapConfigured: configuredAdminBootstrapPasswords().length > 0
       });
     }
 
     if (method === 'POST' && route === '/admin/recover') {
       const body = parseBody(event);
-      const bootstrap = String(process.env.ADMIN_BOOTSTRAP_PASSWORD || '');
-      if (!bootstrap || !timingSafeTextEqual(body.bootstrapPassword, bootstrap)) {
+      const bootstraps = configuredAdminBootstrapPasswords();
+      if (!bootstraps.some(value => timingSafeTextEqual(body.bootstrapPassword, value))) {
         return json(403, { error: 'Kode pemulihan admin tidak cocok.' });
       }
       const newPassword = String(body.newPassword || '');

@@ -266,7 +266,8 @@ async function handle(event) {
       const marker = await stores.archive().get('migration/complete', { type: 'json', consistency: 'strong' });
       if (marker) return json(409, { error: 'Migrasi sebelumnya sudah selesai.', migration: marker });
       const existingV2 = await stores.users().list({ prefix: 'user/' });
-      if (existingV2.blobs.length) return json(409, { error: 'Database V2 sudah berisi akun. Migrasi otomatis dihentikan.' });
+      const inProgress = await stores.archive().get('migration/in-progress', { type: 'json', consistency: 'strong' });
+      if (existingV2.blobs.length && !inProgress) return json(409, { error: 'Database V2 sudah berisi akun. Migrasi otomatis dihentikan.' });
       const sourceStores = { config: legacy.config(), users: legacy.users(), votes: legacy.votes(), admins: legacy.admins() };
       const archiveId = new Date().toISOString().replace(/[:.]/g, '-');
       const backupCounts = {};
@@ -285,17 +286,19 @@ async function handle(event) {
         if (verify[name] !== count) return json(500, { error: 'Verifikasi backup gagal untuk ' + name + '.', backupCounts, verify });
         for (const blob of listing.blobs) { const saved = await stores.archive().get(blob.key, { type: 'json', consistency: 'strong' }); if (!saved || !saved.value || !saved.checksum) return json(500, { error: 'Backup tidak lengkap: ' + blob.key }); const actual = crypto.createHash('sha256').update(JSON.stringify(saved.value)).digest('hex'); if (actual !== saved.checksum) return json(500, { error: 'Checksum backup tidak cocok: ' + blob.key }); }
       }
+      await stores.archive().setJSON('migration/in-progress', { archiveId, startedAt: new Date().toISOString() });
       const oldUsers = await legacy.users().list({ prefix: 'user/' });
       let imported = 0;
       for (const blob of oldUsers.blobs) {
         const user = await legacy.users().get(blob.key, { type: 'json', consistency: 'strong' });
         if (!user?.id || !user?.passwordHash) continue;
-        await stores.users().setJSON('user/' + user.id, { ...user, active: true, migratedFromV1: true }, { onlyIfNew: true });
+        const created = await stores.users().setJSON('user/' + user.id, { ...user, active: true, migratedFromV1: true }, { onlyIfNew: true });
         await stores.users().setJSON('username/' + normalizeUsername(user.username), { id: user.id }, { onlyIfNew: true });
-        imported++;
+        if (created.modified) imported++;
       }
       const markerValue = { archiveId, backupCounts, verify, importedUsers: imported, completedAt: new Date().toISOString(), legacyTrialVotesArchivedNotImported: true };
       await stores.archive().setJSON('migration/complete', markerValue, { onlyIfNew: true });
+      await stores.archive().delete('migration/in-progress');
       await writeAudit('admin', 'legacy-migration-complete', markerValue);
       return json(200, { ok: true, migration: markerValue });
     }

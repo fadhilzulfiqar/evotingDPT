@@ -179,7 +179,7 @@ async function ensureSchema() {
         'CREATE TABLE IF NOT EXISTS evoting_v2_participation (' +
         'election_id TEXT NOT NULL, voter_id TEXT NOT NULL, voted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (election_id, voter_id));\n' +
         'CREATE TABLE IF NOT EXISTS evoting_v2_ballots (' +
-        'ballot_id UUID PRIMARY KEY, election_id TEXT NOT NULL, idempotency_key UUID NOT NULL, chair_candidate_id TEXT NOT NULL CHECK (chair_candidate_id IN (\'K01\',\'K02\')), vice_candidate_id TEXT NOT NULL CHECK (vice_candidate_id IN (\'W01\',\'W02\')), UNIQUE (election_id, idempotency_key));\n' +
+        'ballot_id UUID PRIMARY KEY, election_id TEXT NOT NULL, idempotency_key UUID NOT NULL, chair_candidate_id TEXT NOT NULL, vice_candidate_id TEXT NOT NULL, UNIQUE (election_id, idempotency_key));\n' +
         'CREATE INDEX IF NOT EXISTS evoting_v2_ballots_election_idx ON evoting_v2_ballots (election_id);\n' +
         'CREATE TABLE IF NOT EXISTS evoting_v2_ballot_archive (' +
         'archive_id UUID NOT NULL, election_id TEXT NOT NULL, ballot_id UUID NOT NULL, chair_candidate_id TEXT NOT NULL, vice_candidate_id TEXT NOT NULL, archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (archive_id, ballot_id));\n' +

@@ -331,6 +331,13 @@ async function resetElectionData() {
   if ((pendingList.blobs || []).length) {
     throw new Error('Masih ada transaksi suara sementara. Reset dibatalkan agar tidak menghilangkan suara yang belum terselesaikan.');
   }
+  const unresolvedParticipation = await Promise.all((participationList.blobs || []).map(async item => {
+    const record = await votesStore.get(item.key, { type: 'json', consistency: 'strong' });
+    return record?.state === 'pending' || record?.state === 'deleting';
+  }));
+  if (unresolvedParticipation.some(Boolean)) {
+    throw new Error('Masih ada transaksi atau penghapusan akun yang sedang diproses. Selesaikan terlebih dahulu sebelum reset.');
+  }
 
   const latestConfig = await getV2Config();
   if (latestConfig.status !== 'closed') {
@@ -643,7 +650,7 @@ async function getAdminStats() {
 
   const safeUsers = users.map(user => {
     const participation = participationByUser.get(user.id);
-    const pending = participation?.state === 'pending';
+    const pending = participation?.state === 'pending' || participation?.state === 'deleting';
     const done = participation?.state === 'done';
     return {
       id: user.id,
@@ -1073,7 +1080,8 @@ async function handleEvent(event) {
     if (method === 'POST' && route === '/admin/users/add') {
       const result = await addUser(parseBody(event));
       if (!result.ok) return json(result.duplicate ? 409 : 400, { error: result.error });
-      await writeAudit('voter.created', result.id, {});
+      const currentConfig = await getV2Config();
+      await writeAudit('voter.created', result.id, { duringElection: currentConfig.status === 'open' });
       return json(200, { ok: true, id: result.id });
     }
 
@@ -1091,7 +1099,8 @@ async function handleEvent(event) {
           skipped.push({ username: String(row?.username || ''), reason: 'Gagal menyimpan.' });
         }
       }
-      await writeAudit('voter.bulk_import', null, { added, skipped: skipped.length });
+      const currentConfig = await getV2Config();
+      await writeAudit('voter.bulk_import', null, { added, skipped: skipped.length, duringElection: currentConfig.status === 'open' });
       return json(200, { ok: true, added, skipped });
     }
 

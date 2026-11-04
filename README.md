@@ -2,7 +2,7 @@
 
 ## Versi aplikasi
 
-- **Netlify:** frontend pada folder `public/`, API melalui Netlify Functions, dan penyimpanan terpusat menggunakan Netlify Blobs.
+- **Netlify:** domain utama `/` langsung membuka portal v2; dashboard admin `/admin` membuka dashboard v2. Frontend berada pada folder `public/`, API melalui Netlify Functions 2.0, dan penyimpanan terpusat menggunakan Netlify Blobs.
 - **Prototipe statis:** file prototipe pada root repository tidak digunakan untuk pemilihan resmi karena penyimpanannya tidak tersinkron antarperangkat.
 
 ## Fitur versi final

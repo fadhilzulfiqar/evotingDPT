@@ -1,12 +1,12 @@
-name: Validate E-Voting DPT v2
+name: Validate E-Voting DPT Fresh Project
 
 on:
   push:
     branches:
-      - netlify-redesign
+      - evotingdpt-fresh-project
   pull_request:
     branches:
-      - netlify-redesign
+      - evotingdpt-fresh-project
 
 jobs:
   syntax:

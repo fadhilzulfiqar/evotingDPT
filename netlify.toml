@@ -12,19 +12,7 @@
   force = true
 
 [[redirects]]
-  from = "/index.html"
-  to = "/v2.html"
-  status = 200
-  force = true
-
-[[redirects]]
   from = "/admin"
-  to = "/admin-v2.html"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/admin.html"
   to = "/admin-v2.html"
   status = 200
   force = true
@@ -111,5 +99,10 @@
 
 [[headers]]
   for = "/styles.css"
+  [headers.values]
+    Cache-Control = "no-store"
+
+[[headers]]
+  for = "/fresh.css"
   [headers.values]
     Cache-Control = "no-store"

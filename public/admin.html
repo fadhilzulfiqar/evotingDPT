@@ -3,60 +3,81 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#0b1424">
-  <meta name="description" content="Dashboard administrator E-Voting Dewan Perwakilan Taruna Politeknik Agraria STPN.">
-  <title>Admin E-Voting DPT | Control Center</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="/styles.css">
+  <meta name="theme-color" content="#123e38">
+  <meta name="description" content="Dashboard administrator E-Voting DPT Politeknik Agraria STPN.">
+  <title>Administrator | E-Voting DPT</title>
+  <link rel="stylesheet" href="/v2.css">
+  <link rel="stylesheet" href="/admin-v2.css">
+  <link rel="stylesheet" href="/fresh.css?v=4">
 </head>
-<body class="admin-body" data-page="admin">
-  <section id="adminLoginView" class="admin-login-wrap">
-    <form class="glass-panel admin-login" id="adminLoginForm">
-      <a class="brand" href="/">
-        <div><div class="brand-title">Dewan Perwakilan Taruna</div><div class="brand-sub">Politeknik Agraria STPN • 2026–2027</div></div>
-      </a>
-      <span class="eyebrow">AKSES TERBATAS · PANITIA</span>
-      <h1>Dashboard Admin</h1>
-      <p class="muted">Masuk untuk mengelola pasangan calon, data pemilih, pengaturan, dan rekapitulasi suara.</p>
-      <div id="adminLoginFeedback" class="form-feedback" aria-live="polite"></div>
-      <label class="field"><span>Username admin</span><input id="adminUsername" autocomplete="username" value="admin_dpt" required></label>
-      <label class="field"><span>Password admin</span><input id="adminPassword" type="password" autocomplete="current-password" placeholder="Masukkan password admin" required></label>
-      <button class="btn btn-gold" id="adminLoginButton" type="submit">Masuk dashboard →</button>
-      <a class="admin-link back-link" href="/">← Kembali ke halaman pemilih</a>
-      <div class="notice-box">Akses ini khusus panitia. Gunakan password administrator yang telah ditetapkan dan jangan membagikannya kepada pemilih.</div>
-    </form>
+<body class="admin-v2">
+  <section id="adminLoginView" class="fresh-auth">
+    <div class="fresh-auth-shell">
+      <aside class="fresh-auth-story">
+        <a class="v2-brand" href="/"><span class="brand-mark">DPT</span><span><b>DEWAN PERWAKILAN TARUNA</b><small>Politeknik Agraria STPN · 2026–2027</small></span></a>
+        <div class="story-copy">
+          <span class="eyebrow">E-VOTING · CONTROL CENTER</span>
+          <h1>Keputusan yang baik dimulai dari proses yang tertib.</h1>
+          <p>Kelola calon, pemilih, jadwal, dan hasil pemilihan melalui satu panel yang terpusat.</p>
+          <div class="story-points">
+            <div><b>01</b><span>Kelola empat kandidat</span></div>
+            <div><b>02</b><span>Monitor partisipasi pemilih</span></div>
+            <div><b>03</b><span>Rekap suara secara rahasia</span></div>
+          </div>
+        </div>
+        <div class="story-foot">SISTEM PEMILIHAN DIGITAL · PERIODE 2026–2027</div>
+      </aside>
+      <div class="fresh-auth-main">
+        <form id="adminLoginForm" class="fresh-auth-card">
+          <span class="eyebrow">ADMINISTRATOR ACCESS</span>
+          <h2>Masuk ke dashboard</h2>
+          <p class="muted">Gunakan akun administrator untuk mengelola proses pemilihan.</p>
+          <div id="adminLoginFeedback" class="feedback" aria-live="polite"></div>
+          <label>Username admin<input id="adminUsername" value="admin_dpt" autocomplete="username" required></label>
+          <label>Password admin<input id="adminPassword" type="password" autocomplete="current-password" required placeholder="Masukkan password admin"></label>
+          <button id="adminLoginButton" class="primary-button" type="submit">Masuk dashboard <span>→</span></button>
+          <button id="showRecoveryButton" class="recovery-link" type="button">Lupa password? Pulihkan akses admin</button>
+          <a class="back-link" href="/">← Kembali ke portal pemilih</a>
+        </form>
+        <form id="adminRecoveryForm" class="fresh-auth-card hidden">
+          <span class="eyebrow">ACCOUNT RECOVERY</span>
+          <h2>Pulihkan akses admin</h2>
+          <p class="muted">Gunakan kode bootstrap yang tersimpan pada Environment variables project Netlify untuk membuat password administrator baru.</p>
+          <div id="adminRecoveryFeedback" class="feedback" aria-live="polite"></div>
+          <label>Kode bootstrap<input id="adminBootstrapCode" type="password" autocomplete="off" required></label>
+          <label>Password admin baru<input id="adminRecoveryPassword" type="password" minlength="12" autocomplete="new-password" required placeholder="Minimal 12 karakter"></label>
+          <label>Ulangi password baru<input id="adminRecoveryConfirm" type="password" minlength="12" autocomplete="new-password" required placeholder="Ulangi password baru"></label>
+          <button id="adminRecoveryButton" class="primary-button" type="submit">Perbarui password <span>→</span></button>
+          <button id="hideRecoveryButton" class="recovery-link" type="button">Kembali ke halaman login</button>
+        </form>
+        <div class="auth-note"><span class="secure-dot"></span> Koneksi aman · Hak akses terbatas untuk panitia</div>
+      </div>
+    </div>
   </section>
 
   <section id="adminShell" class="admin-shell hidden">
     <aside class="admin-sidebar">
-      <a class="brand" href="/">
-        <div><div class="brand-title">Dewan Perwakilan Taruna</div><div class="brand-sub">Politeknik Agraria STPN • 2026–2027</div></div>
-      </a>
-      <nav class="admin-nav" aria-label="Navigasi admin">
-        <button type="button" data-tab="overview" class="active">Ringkasan</button>
-        <button type="button" data-tab="candidates">Pasangan calon</button>
-        <button type="button" data-tab="voters">Data pemilih</button>
-        <button type="button" data-tab="results">Hasil suara</button>
-        <button type="button" data-tab="settings">Keamanan</button>
+      <a class="v2-brand" href="/"><span class="brand-mark">DPT</span><span><b>EVOTING DPT</b><small>ADMIN CONTROL CENTER</small></span></a>
+      <nav class="admin-nav">
+        <button data-tab="overview" class="active" type="button">Ringkasan</button>
+        <button data-tab="candidates" type="button">Data calon</button>
+        <button data-tab="voters" type="button">Data pemilih</button>
+        <button data-tab="results" type="button">Rekap suara</button>
+        <button data-tab="audit" type="button">Audit aktivitas</button>
+        <button data-tab="settings" type="button">Keamanan & arsip</button>
       </nav>
-      <div class="sidebar-bottom">DEWAN PERWAKILAN TARUNA<br>POLITEKNIK AGRARIA STPN<br>PERIODE 2026–2027</div>
+      <div class="sidebar-bottom">POLITEKNIK AGRARIA STPN<br>PERIODE 2026–2027</div>
     </aside>
     <main class="admin-main">
-      <div class="admin-topbar">
-        <div class="admin-topbar-brand">
-          <div><h2 id="adminElectionName">Pemilihan Ketua &amp; Wakil Ketua DPT</h2><p>CONTROL CENTER · DEWAN PERWAKILAN TARUNA · 2026–2027</p></div>
-        </div>
-        <div class="button-row">
-          <a class="btn btn-outline btn-small" href="/">Lihat portal pemilih ↗</a>
-          <button class="btn btn-danger btn-small" type="button" onclick="window.EvotingAdmin.logout()">Keluar</button>
-        </div>
-      </div>
-      <div id="adminFeedback" class="form-feedback" aria-live="polite"></div>
-      <div id="adminContent" class="admin-content"></div>
-      <div class="admin-footer">EVOTINGDPT · ADMINISTRATOR PORTAL<br>Data pemilih dan rekap suara tersimpan terpusat melalui Netlify Blobs.</div>
+      <header class="admin-topbar">
+        <div><span class="eyebrow">PANEL PENGELOLAAN</span><h1 id="adminElectionName">Pemilihan DPT</h1></div>
+        <div class="top-actions"><a class="secondary-button" href="/">Portal pemilih ↗</a><button id="logoutButton" class="danger-button" type="button">Keluar</button></div>
+      </header>
+      <div id="adminFeedback" class="feedback" aria-live="polite"></div>
+      <div id="adminContent"></div>
+      <footer class="admin-footer">EVOTING DPT · SISTEM PEMILIHAN INDEPENDEN</footer>
     </main>
   </section>
-  <script src="/admin.js" defer></script>
+  <script src="/admin-v2.js?v=4" defer></script>
 </body>
 </html>

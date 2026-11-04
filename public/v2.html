@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#080d18">
+  <meta name="description" content="Portal pemilihan Ketua dan Wakil Ketua DPT 2026–2027.">
+  <title>E-Voting DPT V2 | Pemilihan 2026–2027</title>
+  <link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/v2.css">
+</head>
+<body data-page="voter-v2">
+  <header class="site-header">
+    <a class="brand" href="/v2.html"><div><div class="brand-title">Dewan Perwakilan Taruna</div><div class="brand-sub">Politeknik Agraria STPN • 2026–2027</div></div></a>
+    <div class="header-right"><span class="top-tag">E-VOTING DPT · V2</span><a class="admin-link" href="/admin-v2.html">Portal Admin ↗</a></div>
+  </header>
+  <main class="container v2-container">
+    <section class="v2-hero">
+      <span class="eyebrow">PEMILIHAN DEWAN PERWAKILAN TARUNA · 2026–2027</span>
+      <h1>Pemimpin Parlemen <span>DPT Periode 2026–2027</span></h1>
+      <p>Pilih satu calon Ketua dan satu calon Wakil Ketua secara terpisah. Kedua pilihan dikirim bersama sebagai satu surat suara.</p>
+      <div class="v2-hero-meta"><span id="v2Status" class="status-chip">Memeriksa status...</span><span>1 akun · 2 pilihan jabatan</span></div>
+    </section>
+    <section id="v2LoginView" class="login-layout">
+      <form id="v2LoginForm" class="glass-panel login-panel">
+        <span class="eyebrow">AUTENTIKASI PEMILIH</span><h3>Masuk ke ruang pemilihan</h3>
+        <p>Gunakan username dan password yang diberikan panitia.</p>
+        <div id="v2LoginFeedback" aria-live="polite"></div>
+        <label class="field"><span>Username / NIT</span><input id="v2Username" autocomplete="username" required></label>
+        <label class="field"><span>Password</span><input id="v2Password" type="password" autocomplete="current-password" required></label>
+        <button id="v2LoginButton" class="btn btn-gold" type="submit">Masuk ke pemilihan →</button>
+      </form>
+      <aside class="glass-panel login-side"><div><span class="eyebrow">PANDUAN SINGKAT</span><h3>Dua jabatan.<br>Dua pilihan mandiri.</h3><p>Anda wajib memilih satu calon Ketua dan satu calon Wakil Ketua. Pastikan kedua pilihan sudah benar sebelum dikirim.</p></div><div class="side-feature"><i>✓</i><span>Pilihan Ketua dan Wakil tidak harus berasal dari nomor yang sama.</span></div><div class="side-feature"><i>◇</i><span>Surat suara dikirim satu kali dan tidak dapat diubah.</span></div></aside>
+    </section>
+    <section id="v2BallotView" class="hidden">
+      <div class="welcome-panel glass-panel"><div><span class="eyebrow">AKSES PEMILIH BERHASIL</span><h2>Selamat datang, <span id="v2WelcomeName">Pemilih</span></h2><p id="v2WelcomeUser"></p></div><button class="btn btn-outline btn-small" id="v2Logout">Keluar</button></div>
+      <div id="v2VoterState" class="state-banner open"></div>
+      <div id="v2BallotForm" class="v2-ballot">
+        <section class="v2-office"><div class="section-heading"><div><span class="eyebrow">SURAT SUARA 01</span><h2>Pilih Calon Ketua</h2><p>Pilih tepat satu orang calon Ketua.</p></div><span id="v2ChairChoice" class="v2-choice-count">Belum dipilih</span></div><div id="v2ChairGrid" class="v2-candidate-grid"></div></section>
+        <section class="v2-office"><div class="section-heading"><div><span class="eyebrow">SURAT SUARA 02</span><h2>Pilih Calon Wakil Ketua</h2><p>Pilih tepat satu orang calon Wakil Ketua.</p></div><span id="v2ViceChoice" class="v2-choice-count">Belum dipilih</span></div><div id="v2ViceGrid" class="v2-candidate-grid"></div></section>
+        <section class="glass-panel v2-submit-panel"><div><span class="eyebrow">PEMERIKSAAN PILIHAN</span><h3>Pastikan pilihan Anda</h3><p id="v2ReviewText">Pilih satu calon Ketua dan satu calon Wakil Ketua untuk melanjutkan.</p></div><button id="v2Submit" class="btn btn-gold" type="button" disabled>Kirim kedua pilihan →</button><div id="v2SubmitFeedback" aria-live="polite"></div></section>
+      </div>
+    </section>
+    <section id="v2DoneView" class="glass-panel done-panel hidden"><div class="done-symbol">✓</div><span class="eyebrow">SURAT SUARA TERCATAT</span><h2>Terima kasih telah berpartisipasi.</h2><p>Pilihan Ketua dan Wakil Anda telah diterima sebagai satu surat suara. Panitia hanya dapat melihat status partisipasi dan rekapitulasi anonim.</p><button class="btn btn-outline" id="v2DoneLogout">Selesai</button></section>
+  </main>
+  <footer class="footer"><b>EVOTINGDPT</b> · DEWAN PERWAKILAN TARUNA · POLITEKNIK AGRARIA STPN<br><span>Pemimpin Parlemen DPT Periode 2026–2027</span></footer>
+  <script src="/v2.js" defer></script>
+</body></html>

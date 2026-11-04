@@ -189,20 +189,20 @@ async function ensureSchema() {
 
         const ddl =
           'CREATE TABLE IF NOT EXISTS evoting_v2_election_control (' +
-          'election_id TEXT PRIMARY KEY, status TEXT NOT NULL CHECK (status IN (\'scheduled\',\'open\',\'closed\')), config_version INTEGER NOT NULL DEFAULT 1, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());\\n' +
+          'election_id TEXT PRIMARY KEY, status TEXT NOT NULL CHECK (status IN (\'scheduled\',\'open\',\'closed\')), config_version INTEGER NOT NULL DEFAULT 1, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());\n' +
           'CREATE TABLE IF NOT EXISTS evoting_v2_eligibility (' +
-          'election_id TEXT NOT NULL, voter_id TEXT NOT NULL, active BOOLEAN NOT NULL DEFAULT TRUE, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (election_id, voter_id));\\n' +
+          'election_id TEXT NOT NULL, voter_id TEXT NOT NULL, active BOOLEAN NOT NULL DEFAULT TRUE, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (election_id, voter_id));\n' +
           'CREATE TABLE IF NOT EXISTS evoting_v2_participation (' +
-          'election_id TEXT NOT NULL, voter_id TEXT NOT NULL, voted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (election_id, voter_id));\\n' +
+          'election_id TEXT NOT NULL, voter_id TEXT NOT NULL, voted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (election_id, voter_id));\n' +
           'CREATE TABLE IF NOT EXISTS evoting_v2_ballots (' +
-          'ballot_id UUID PRIMARY KEY, election_id TEXT NOT NULL, idempotency_key UUID NOT NULL, chair_candidate_id TEXT NOT NULL, vice_candidate_id TEXT NOT NULL, UNIQUE (election_id, idempotency_key));\\n' +
-          'CREATE INDEX IF NOT EXISTS evoting_v2_ballots_election_idx ON evoting_v2_ballots (election_id);\\n' +
+          'ballot_id UUID PRIMARY KEY, election_id TEXT NOT NULL, idempotency_key UUID NOT NULL, chair_candidate_id TEXT NOT NULL, vice_candidate_id TEXT NOT NULL, UNIQUE (election_id, idempotency_key));\n' +
+          'CREATE INDEX IF NOT EXISTS evoting_v2_ballots_election_idx ON evoting_v2_ballots (election_id);\n' +
           'CREATE TABLE IF NOT EXISTS evoting_v2_ballot_archive (' +
-          'archive_id UUID NOT NULL, election_id TEXT NOT NULL, ballot_id UUID NOT NULL, chair_candidate_id TEXT NOT NULL, vice_candidate_id TEXT NOT NULL, archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (archive_id, ballot_id));\\n' +
+          'archive_id UUID NOT NULL, election_id TEXT NOT NULL, ballot_id UUID NOT NULL, chair_candidate_id TEXT NOT NULL, vice_candidate_id TEXT NOT NULL, archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (archive_id, ballot_id));\n' +
           'CREATE TABLE IF NOT EXISTS evoting_v2_participation_archive (' +
-          'archive_id UUID NOT NULL, election_id TEXT NOT NULL, voter_id TEXT NOT NULL, voted_at TIMESTAMPTZ NOT NULL, archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (archive_id, election_id, voter_id));\\n' +
+          'archive_id UUID NOT NULL, election_id TEXT NOT NULL, voter_id TEXT NOT NULL, voted_at TIMESTAMPTZ NOT NULL, archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (archive_id, election_id, voter_id));\n' +
           'CREATE TABLE IF NOT EXISTS evoting_v2_admin_audit (' +
-          'id BIGSERIAL PRIMARY KEY, election_id TEXT NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL, target_id TEXT, details JSONB NOT NULL DEFAULT \'{}\'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());\\n' +
+          'id BIGSERIAL PRIMARY KEY, election_id TEXT NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL, target_id TEXT, details JSONB NOT NULL DEFAULT \'{}\'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());\n' +
           'INSERT INTO evoting_v2_election_control (election_id, status) VALUES (\'dpt-2026-2027-independent-v2\', \'scheduled\') ON CONFLICT (election_id) DO NOTHING;';
         await client.query(ddl);
         await client.query('ALTER TABLE evoting_v2_election_control ADD COLUMN IF NOT EXISTS config_version INTEGER NOT NULL DEFAULT 1');

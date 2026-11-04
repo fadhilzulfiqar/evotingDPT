@@ -151,10 +151,18 @@
   }
 
   function renderSettings() {
-    let html = heading('PENGATURAN SISTEM', 'Keamanan dan arsip', 'Atur kredensial admin dan lakukan reset dengan backup terverifikasi.');
+    let html = heading('PENGATURAN SISTEM', 'Keamanan dan arsip', 'Atur kredensial admin, migrasi penyimpanan, dan reset dengan backup terverifikasi.');
     html += '<section class="admin-panel"><div class="eyebrow">KREDENSIAL ADMIN</div><h2>Ganti password admin</h2><div class="admin-form-grid"><label>Password saat ini<input id="oldAdminPassword" type="password" autocomplete="current-password"></label><label>Password baru<input id="newAdminPassword" type="password" autocomplete="new-password" minlength="12"></label></div><div class="admin-actions"><button class="small-button gold" type="button" onclick="window.EvotingAdmin.changePassword()">Ganti password</button></div><p class="inline-note">Gunakan password minimal 12 karakter. Kode bootstrap dapat digunakan untuk pemulihan jika password admin terlupa.</p></section>';
-    html += '<section class="admin-panel"><div class="eyebrow">RESET PEMILIHAN</div><h2>Arsipkan dan reset suara aktif</h2><p>Hanya dapat dilakukan setelah pemilihan ditutup dan tidak ada transaksi tertunda. Sistem menyalin serta memverifikasi arsip surat suara dan status partisipasi sebelum menghapus data aktif. Akun pemilih dan konfigurasi calon tetap dipertahankan.</p><div class="admin-actions"><button class="small-button warn" type="button" onclick="window.EvotingAdmin.resetElection()">Arsipkan dan reset hasil</button></div></section>';
-    html += '<section class="admin-panel"><div class="eyebrow">INFRASTRUKTUR</div><h2>Penyimpanan aplikasi</h2><p>Platform: <b>Netlify Functions 2.0</b><br>Object storage: <b>Netlify Blobs</b><br>Skema suara: <b>ballot anonim dan status partisipasi terpisah</b></p><div class="notice-error">Netlify Blobs bukan database relasional. Sistem menggunakan kunci unik dan conditional write untuk mencegah suara ganda. Uji beban wajib dilakukan sebelum pemilihan resmi.</div></section>';
+    if (stats.deployContext === 'production' && stats.storageNamespace === 'preview') {
+      html += '<section class="admin-panel"><div class="eyebrow">MIGRASI DATA</div><h2>Salin data ke penyimpanan Production</h2><p>Sistem saat ini masih membaca namespace Preview. Salin konfigurasi, akun pemilih, status partisipasi, surat suara, akun admin, sesi, dan arsip ke namespace Production. Setiap record akan diverifikasi. Data sumber tidak dihapus.</p><p class="inline-note">Pastikan pemilihan ditutup dan tidak ada aktivitas pemilih selama proses ini.</p><div class="admin-actions"><button class="small-button gold" type="button" onclick="window.EvotingAdmin.migrateProductionData()">Salin dan verifikasi data</button></div></section>';
+    } else if (stats.deployContext === 'production' && stats.storageNamespace === 'production') {
+      html += '<section class="admin-panel"><div class="eyebrow">MIGRASI DATA</div><h2>Namespace Production aktif</h2><p>Dashboard sedang membaca penyimpanan Production. Periksa jumlah akun dan status partisipasi sebelum melakukan reset.</p></section>';
+    } else {
+      html += '<section class="admin-panel"><div class="eyebrow">KONTEKS DEPLOYMENT</div><h2>Konfigurasi runtime belum terverifikasi</h2><p>Reset dan migrasi dikunci sampai variabel EVOTING_DEPLOY_CONTEXT tersedia pada Functions scope dan bernilai production untuk deployment utama.</p></section>';
+    }
+    const canReset = stats.deployContext === 'production' && stats.storageNamespace === 'production';
+    html += '<section class="admin-panel"><div class="eyebrow">RESET PEMILIHAN</div><h2>Arsipkan dan reset suara aktif</h2><p>Hanya dapat dilakukan setelah pemilihan ditutup dan tidak ada transaksi tertunda. Sistem menyalin serta memverifikasi arsip surat suara dan status partisipasi sebelum menghapus data aktif. Akun pemilih dan konfigurasi calon tetap dipertahankan.</p><div class="admin-actions"><button class="small-button warn" type="button" ' + (canReset ? '' : 'disabled') + ' onclick="window.EvotingAdmin.resetElection()">' + (canReset ? 'Arsipkan dan reset hasil' : 'Reset terkunci sampai Production siap') + '</button></div></section>';
+    html += '<section class="admin-panel"><div class="eyebrow">INFRASTRUKTUR</div><h2>Penyimpanan aplikasi</h2><p>Platform: <b>Netlify Functions 2.0</b><br>Object storage: <b>Netlify Blobs</b><br>Deploy context: <b>' + esc(stats.deployContext || 'belum diatur') + '</b><br>Namespace data: <b>' + esc(stats.storageNamespace || 'preview') + '</b><br>Skema suara: <b>ballot anonim dan status partisipasi terpisah</b></p><div class="notice-error">Netlify Blobs bukan database relasional. Sistem menggunakan kunci unik dan conditional write untuk mencegah suara ganda. Uji beban wajib dilakukan sebelum pemilihan resmi.</div></section>';
     $('#adminContent').innerHTML = html;
   }
 
@@ -291,6 +299,15 @@
     } catch (error) { feedback(error.message); }
   }
 
+  async function migrateProductionData() {
+    if (!confirm('Salin semua data dari namespace Preview ke namespace Production? Data sumber Preview tidak akan dihapus. Proses akan dibatalkan jika menemukan konflik atau transaksi tertunda.')) return;
+    try {
+      const result = await api('/admin/migrate-production', { method:'POST', body:'{}' });
+      await loadStats(); renderTab('settings');
+      feedback('Salinan data terverifikasi. Total record: ' + result.totalRecordsCopied + '. Rincian: ' + JSON.stringify(result.copied) + '. SHA-256: ' + result.sha256 + '. Data sumber tidak dihapus. Langkah berikutnya: ubah EVOTING_STORE_NAMESPACE pada konteks Production menjadi production, lalu deploy ulang.', 'success');
+    } catch (error) { feedback(error.message); }
+  }
+
   async function resetElection() {
     if (stats.config.status === 'open' || stats.config.status === 'closing') return feedback('Tutup pemilihan terlebih dahulu sebelum reset.');
     if (!confirm('Reset akan mengarsipkan surat suara dan status partisipasi v2 ke Netlify Blobs, memverifikasi arsip, lalu mengosongkan hasil aktif. Akun pemilih tidak dihapus. Lanjutkan?')) return;
@@ -379,6 +396,6 @@
     loadStats().catch(() => {});
   }
 
-  window.EvotingAdmin = {openTab:renderTab,saveConfig,pickPhoto,addVoter,bulkImport,editUser,deactivateUser,activateUser,archiveLegacy,resetElection,changePassword,exportCsv,filterVoters:renderVoterRows};
+  window.EvotingAdmin = {openTab:renderTab,saveConfig,pickPhoto,addVoter,bulkImport,editUser,deactivateUser,activateUser,archiveLegacy,migrateProductionData,resetElection,changePassword,exportCsv,filterVoters:renderVoterRows};
   init();
 })();

@@ -260,7 +260,9 @@ async function handle(event) {
     if (path.startsWith('/admin/') && !admin) return json(401, { error: 'Unauthorized' });
 
     if (method === 'GET' && path === '/admin/stats') return json(200, await adminStats());
+    if (method === 'GET' && path === '/admin/migration-status') { const marker = await stores.archive().get('migration/complete', { type: 'json', consistency: 'strong' }); return json(200, { completed: Boolean(marker), migration: marker || null }); }
     if (method === 'POST' && path === '/admin/migrate') {
+      if (process.env.CONTEXT !== 'production') return json(409, { error: 'Migrasi hanya dapat dijalankan pada deployment production setelah persetujuan cutover.' });
       const marker = await stores.archive().get('migration/complete', { type: 'json', consistency: 'strong' });
       if (marker) return json(409, { error: 'Migrasi sebelumnya sudah selesai.', migration: marker });
       const existingV2 = await stores.users().list({ prefix: 'user/' });

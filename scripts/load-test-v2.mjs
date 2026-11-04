@@ -72,8 +72,8 @@ try {
     throw new Error('PostgreSQL is not ready on this staging deployment.');
   }
   const baselineVoted = Number(beforeStats.voted || 0);
-  if (beforeStats.reconciliationOk !== true || Number(beforeStats.totalBallots) !== baselineVoted) {
-    throw new Error('Staging database is not reconciled. Archive/reset the V2 trial before load testing.');
+  if (beforeStats.reconciliationOk !== true || baselineVoted !== 0 || Number(beforeStats.totalBallots) !== 0) {
+    throw new Error('Load test requires an empty, reconciled V2 staging election. Archive/reset staging data first.');
   }
 
   const electionResponse = await request('/api/v2/election');
@@ -194,6 +194,27 @@ try {
     && chairTotal === expectedTotal
     && viceTotal === expectedTotal;
 
+  const testUsers = (afterStats.users || []).filter(user => String(user.username || '').startsWith(prefix));
+  const resetResponse = await request('/api/v2/admin/reset-practice', {
+    method: 'POST',
+    headers: { cookie: adminCookie },
+    body: '{}'
+  });
+  const resetResult = await readJson(resetResponse);
+  if (!resetResponse.ok || !resetResult.archiveId) {
+    throw new Error('Load test results were measured, but staging cleanup/reset failed: ' + (resetResult.error || resetResponse.status));
+  }
+  let testAccountsDeactivated = 0;
+  for (const user of testUsers) {
+    const response = await request('/api/v2/admin/users/deactivate', {
+      method: 'POST',
+      headers: { cookie: adminCookie },
+      body: JSON.stringify({ id: user.id })
+    });
+    if (response.ok) testAccountsDeactivated++;
+  }
+  const cleanupPassed = testAccountsDeactivated === rows.length;
+
   const report = {
     target: baseUrl,
     virtualUsers: count,
@@ -219,12 +240,15 @@ try {
     viceTotal,
     reconciliationPassed: reconciled,
     stagingElectionClosed: electionClosed,
+    stagingResetArchiveId: resetResult.archiveId,
+    testAccountsDeactivated,
+    cleanupPassed,
     failedDetails: failedBallots.map(result => result.body?.error || 'HTTP ' + result.status).slice(0, 20)
   };
   console.log(JSON.stringify(report, null, 2));
 
   if (successfulBallots !== count - 1 || !concurrentDuplicateGuardPassed || !sameRequestRetryPassed
-      || !conflictingRetryBlocked || !secondVoteBlocked || !reconciled) {
+      || !conflictingRetryBlocked || !secondVoteBlocked || !reconciled || !cleanupPassed) {
     process.exitCode = 1;
   }
 } finally {

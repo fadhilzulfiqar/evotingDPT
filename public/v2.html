@@ -71,7 +71,7 @@
       <div class="ballot-heading">
         <span class="eyebrow">LEMBAR SUARA ELEKTRONIK</span>
         <h2 id="electionHeading">Pemilihan Ketua dan Wakil Ketua DPT</h2>
-        <p id="electionSubheading">Pilih satu kandidat pada setiap bagian.</p>
+        <p id="electionSubheading">Pilih satu calon Ketua dan satu calon Wakil Ketua. Keduanya wajib dipilih sebelum surat suara dapat dikirim.</p>
       </div>
       <div id="voterState" class="state-message" aria-live="polite"></div>
       <div id="voterFeedback" class="feedback" aria-live="polite"></div>
@@ -84,8 +84,8 @@
         <div id="viceGrid" class="candidate-grid"></div>
       </section>
       <div class="submit-panel panel">
-        <div><b>Periksa kedua pilihan Anda</b><small>Ketua dan Wakil wajib dipilih sebelum surat suara dikirim.</small></div>
-        <button id="reviewButton" class="primary-button" type="button" disabled>Periksa pilihan <span>→</span></button>
+        <div><b>Periksa kedua pilihan Anda</b><small>Wajib memilih tepat satu calon Ketua dan satu calon Wakil. Sistem tidak akan menerima surat suara yang belum lengkap.</small></div>
+        <button id="reviewButton" class="primary-button" type="button" disabled>Lanjutkan ke konfirmasi <span>→</span></button>
       </div>
     </section>
 
@@ -109,9 +109,9 @@
       <button id="closeModal" class="modal-close" type="button" aria-label="Tutup">×</button>
       <div class="eyebrow">KONFIRMASI AKHIR</div>
       <h2 id="confirmTitle">Periksa pilihan Anda</h2>
-      <p class="muted">Pastikan nama calon sudah benar. Suara tidak dapat diubah setelah dikirim.</p>
+      <p class="muted">Pastikan pilihan Ketua dan Wakil sudah benar. Satu akun hanya dapat mengirim satu surat suara. Suara tidak dapat diubah setelah dikirim.</p>
       <div id="confirmSummary" class="confirm-summary"></div>
-      <label class="confirm-agree"><input id="agree" type="checkbox"> Saya yakin dengan kedua pilihan ini.</label>
+      <label class="confirm-agree"><input id="agree" type="checkbox"> Saya yakin dengan satu pilihan Ketua dan satu pilihan Wakil ini.</label>
       <div id="voteError" class="feedback" role="alert"></div>
       <div class="modal-actions">
         <button id="changeSelection" class="secondary-button" type="button">Periksa kembali</button>

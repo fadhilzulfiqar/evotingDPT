@@ -102,8 +102,23 @@ function timingSafeTextEqual(left, right) {
 }
 
 async function verifyAdminPassword(password, admin) {
-  if (await verifyPassword(password, admin?.passwordHash)) return true;
-  return configuredAdminBootstrapPasswords().some(candidate => timingSafeTextEqual(password, candidate));
+  const submitted = String(password ?? '');
+  const attempts = [...new Set([
+    submitted,
+    submitted.trim(),
+    submitted.normalize('NFC'),
+    submitted.trim().normalize('NFC')
+  ])];
+
+  for (const attempt of attempts) {
+    if (await verifyPassword(attempt, admin?.passwordHash)) return true;
+  }
+
+  const configured = configuredAdminBootstrapPasswords();
+  return configured.some(candidate => {
+    const accepted = [candidate, candidate.trim(), candidate.normalize('NFC'), candidate.trim().normalize('NFC')];
+    return attempts.some(attempt => accepted.some(value => timingSafeTextEqual(attempt, value)));
+  });
 }
 
 function getCookie(event, name) {
@@ -823,8 +838,8 @@ async function handleEvent(event) {
     if (method === 'POST' && route === '/admin/login') {
       const body = parseBody(event);
       const admin = await ensureAdmin();
-      if (!admin || String(body.username || '') !== admin.username || !(await verifyAdminPassword(body.password, admin))) {
-        return json(401, { error: 'Username atau password admin salah.' });
+      if (!admin || normalizeUsername(body.username) !== normalizeUsername(admin.username) || !(await verifyAdminPassword(body.password, admin))) {
+        return json(401, { error: 'Username atau password admin tidak cocok. Periksa kembali username dan password yang tersimpan di Netlify.' });
       }
       const cookie = await createSession(event, 'admin', 'admin');
       return json(200, { ok: true }, { 'set-cookie': cookie });

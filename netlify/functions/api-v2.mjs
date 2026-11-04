@@ -283,6 +283,7 @@ async function handle(event) {
         const listing = await stores.archive().list({ prefix: 'backup/' + archiveId + '/' + name + '/' });
         verify[name] = listing.blobs.length;
         if (verify[name] !== count) return json(500, { error: 'Verifikasi backup gagal untuk ' + name + '.', backupCounts, verify });
+        for (const blob of listing.blobs) { const saved = await stores.archive().get(blob.key, { type: 'json', consistency: 'strong' }); if (!saved || !saved.value || !saved.checksum) return json(500, { error: 'Backup tidak lengkap: ' + blob.key }); const actual = crypto.createHash('sha256').update(JSON.stringify(saved.value)).digest('hex'); if (actual !== saved.checksum) return json(500, { error: 'Checksum backup tidak cocok: ' + blob.key }); }
       }
       const oldUsers = await legacy.users().list({ prefix: 'user/' });
       let imported = 0;

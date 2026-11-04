@@ -765,16 +765,12 @@ async function handleEvent(event) {
         }
 
         const previousRequest = await client.query(
-          'SELECT chair_candidate_id,vice_candidate_id FROM evoting_v2_ballots WHERE election_id=$1 AND idempotency_key=$2',
+          'SELECT 1 FROM evoting_v2_ballots WHERE election_id=$1 AND idempotency_key=$2',
           [ELECTION_ID, idempotencyKey]
         );
         if (previousRequest.rows.length) {
-          const previous = previousRequest.rows[0];
-          await client.query('COMMIT');
-          if (previous.chair_candidate_id !== chairCandidateId || previous.vice_candidate_id !== viceCandidateId) {
-            return json(409, { error: 'Kunci transaksi ini sudah digunakan untuk pilihan sebelumnya. Periksa status hak pilih Anda.' });
-          }
-          return json(200, { ok: true, message: 'Pengiriman sebelumnya sudah tercatat.', repeated: true });
+          await client.query('ROLLBACK');
+          return json(409, { error: 'Permintaan dengan kunci ini sudah diproses. Periksa status hak pilih Anda.' });
         }
 
         await client.query(

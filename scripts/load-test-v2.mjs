@@ -33,6 +33,12 @@ async function readJson(response) {
   return response.json().catch(() => ({}));
 }
 
+function latencyPercentiles(values) {
+  const sorted = values.map(Number).filter(Number.isFinite).sort((a, b) => a - b);
+  const at = p => sorted.length ? Math.round(sorted[Math.max(0, Math.ceil(p * sorted.length) - 1)]) : null;
+  return { p50: at(0.50), p95: at(0.95), p99: at(0.99) };
+}
+
 let adminCookie = '';
 let electionConfig = null;
 let electionClosed = false;
@@ -105,17 +111,20 @@ try {
 
   const loginStarted = performance.now();
   const sessions = await Promise.all(rows.map(async row => {
+    const started = performance.now();
     const response = await request('/api/v2/login', {
       method: 'POST',
       body: JSON.stringify({ username: row.username, password: row.password })
     });
+    const durationMs = Math.round(performance.now() - started);
     const cookie = cookieFrom(response);
     if (!response.ok || !cookie) throw new Error('Voter login failed for ' + row.username + ': HTTP ' + response.status);
-    return { row, cookie };
+    return { row, cookie, loginDurationMs: durationMs };
   }));
   const loginMs = Math.round(performance.now() - loginStarted);
 
   async function cast(session, chairCandidateId, viceCandidateId, idempotencyKey) {
+    const started = performance.now();
     const response = await request('/api/v2/vote', {
       method: 'POST',
       headers: { cookie: session.cookie },
@@ -126,7 +135,8 @@ try {
         configVersion: Number(electionConfig.configVersion || 1)
       })
     });
-    return { status: response.status, body: await readJson(response) };
+    const durationMs = Math.round(performance.now() - started);
+    return { status: response.status, body: await readJson(response), durationMs };
   }
 
   const voteStarted = performance.now();
@@ -134,7 +144,7 @@ try {
   const mainBallots = mainSessions.map((session, index) => ({
     session,
     chair: index % 2 ? 'K01' : 'K02',
-    vice: index % 2 ? 'W02' : 'W01',
+    vice: Math.floor(index / 2) % 2 ? 'W02' : 'W01',
     key: crypto.randomUUID()
   }));
   const raceSession = sessions[count - 1];
@@ -190,9 +200,13 @@ try {
     accountsCreated: importResult.added,
     successfulLogins: sessions.length,
     loginBatchMs: loginMs,
+    loginLatencyMs: latencyPercentiles(sessions.map(session => session.loginDurationMs)),
     successfulConcurrentBallots: successfulBallots,
+    acceptedBallotsIncludingDuplicateRace: successfulBallots + raceSuccesses,
     failedConcurrentBallots: failedBallots,
     voteBatchMs: voteMs,
+    voteRequestCount: simultaneousResults.length,
+    voteLatencyMs: latencyPercentiles(simultaneousResults.map(result => result.durationMs)),
     duplicateRace: { successes: raceSuccesses, conflicts: raceConflicts, passed: concurrentDuplicateGuardPassed },
     sameRequestRetryPassed,
     conflictingRetryBlocked,

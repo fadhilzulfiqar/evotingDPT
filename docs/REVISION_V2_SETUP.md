@@ -9,9 +9,13 @@
 
 ## Target Netlify
 
-Domain yang diminta adalah `evotedpt.netlify.app`. Project target sebelumnya dipublikasikan melalui Netlify Drop dan belum menghasilkan Deploy Preview dari branch ini. Project lain bernama `newevotingdpt` terhubung ke GitHub dan dapat menghasilkan preview PR, tetapi domain serta data pemilihnya berbeda. Preview dari project lain **bukan** preview untuk domain target `evotedpt`.
+PR pengembangan ini sudah menghasilkan Deploy Preview dari project Netlify bernama `evotingdpt`:
 
-Sebelum menguji deployment target, hubungkan project Netlify `evotedpt` ke repository `fadhilzulfiqar/evotingDPT`. Jangan merge PR hanya untuk mengandalkan preview dari project Netlify yang berbeda.
+`https://deploy-preview-2--evotingdpt.netlify.app/v2`
+
+Domain produksi yang diminta pengguna adalah `evotedpt.netlify.app` (ejaan berbeda dari `evotingdpt`). Pastikan melalui Domain management apakah domain tersebut memang terpasang pada project Netlify `evotingdpt`. Project `newevotingdpt` yang pernah terlihat pada dashboard adalah project lain. Jangan menganggap ketiga nama tersebut menunjuk ke site dan penyimpanan yang sama.
+
+Deploy Preview hanya membuktikan bahwa branch berhasil dipublikasikan pada project `evotingdpt`; preview belum membuktikan database staging telah terhubung, dan bukan deployment ke domain produksi `evotedpt.netlify.app`. Jangan merge PR atau mengganti domain sebelum pemilik site mengonfirmasi project yang benar.
 
 ## Rilis dua tahap
 

@@ -1,4 +1,4 @@
-import { getStore } from '@netlify/blobs';
+import { connectLambda, getStore } from '@netlify/blobs';
 import crypto from 'node:crypto';
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const USERNAME_RE = /^[A-Za-z0-9._@+-]{2,80}$/;
@@ -1014,4 +1014,9 @@ async function handleEvent(event) {
   }
 }
 
-export const handler = async event => handleEvent(event);
+export const handler = async event => {
+  // This project uses Netlify's Lambda-compatible function signature.
+  // Initialize the Blobs runtime context before any getStore() call.
+  connectLambda(event);
+  return handleEvent(event);
+};

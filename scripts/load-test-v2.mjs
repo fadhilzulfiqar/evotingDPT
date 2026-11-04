@@ -10,8 +10,9 @@ const prefix = process.env.LOAD_TEST_PREFIX || ('lt' + Date.now().toString(36).s
 if (!baseUrl || !adminPassword) {
   throw new Error('Set BASE_URL and ADMIN_PASSWORD before running this test.');
 }
-if (baseUrl.includes('evotedpt.netlify.app') && process.env.ALLOW_PRODUCTION_LOAD_TEST !== 'true') {
-  throw new Error('Refusing to run load test on production. Use a Netlify deploy preview with a separate staging database.');
+const targetHost = new URL(baseUrl).hostname;
+if (targetHost === 'evotedpt.netlify.app' && process.env.ALLOW_PRODUCTION_LOAD_TEST !== 'true') {
+  throw new Error('Refusing to run load test on production. Use a Netlify deploy preview.');
 }
 
 async function request(path, options = {}) {
@@ -19,6 +20,12 @@ async function request(path, options = {}) {
     ...options,
     headers: { 'content-type': 'application/json', ...(options.headers || {}) }
   });
+}
+
+const healthResponse = await request('/api/v2/health');
+const health = await healthResponse.json().catch(() => ({}));
+if (!healthResponse.ok || health.storage !== 'netlify-blobs') {
+  throw new Error('V2 storage health check failed: ' + JSON.stringify(health));
 }
 
 const adminLogin = await request('/api/v2/admin/login', {
@@ -93,8 +100,16 @@ const duplicateResponse = await request('/api/v2/vote', {
 });
 const duplicateGuardPassed = duplicateResponse.status === 409;
 
+const statsResponse = await request('/api/v2/admin/stats', { headers: { cookie: adminCookie } });
+const stats = await statsResponse.json().catch(() => ({}));
+const testedUsers = Array.isArray(stats.users) ? stats.users.filter(user => String(user.username || '').startsWith(prefix)) : [];
+const completedTestUsers = testedUsers.filter(user => user.hasVoted === true).length;
+const pendingTestUsers = testedUsers.filter(user => user.votePending === true).length;
+const participationReconciled = testedUsers.length === count && completedTestUsers === count && pendingTestUsers === 0;
+
 const report = {
   target: baseUrl,
+  storage: health.storage,
   virtualUsers: count,
   accountsCreated: importResult.added,
   successfulLogins: sessions.length,
@@ -103,7 +118,10 @@ const report = {
   failedBallots: failed,
   voteBatchMs: voteMs,
   duplicateVoteBlocked: duplicateGuardPassed,
+  participationReconciled,
+  completedTestUsers,
+  pendingTestUsers,
   failedDetails: submissions.filter(result => result.status === 'rejected').map(result => String(result.reason)).slice(0, 20)
 };
 console.log(JSON.stringify(report, null, 2));
-if (failed || !duplicateGuardPassed) process.exitCode = 1;
+if (failed || !duplicateGuardPassed || !participationReconciled) process.exitCode = 1;

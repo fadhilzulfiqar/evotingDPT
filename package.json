@@ -1,12 +1,11 @@
 {
-  "name": "evotingdpt",
-  "version": "3.0.0",
+  "name": "evotingdpt-fresh",
+  "version": "4.0.0",
   "private": true,
-  "description": "E-Voting Ketua dan Wakil Ketua DPT Politeknik Agraria STPN 2026-2027",
+  "description": "E-Voting DPT 2026-2027 - pemilihan Ketua dan Wakil secara terpisah",
   "scripts": {
-    "start": "node server-online.js",
-    "start:local": "node server.js",
-    "test:load:v2": "node scripts/load-test-v2.mjs"
+    "test:syntax": "node --check netlify/functions/api-v2.mjs && node --check public/v2.js && node --check public/admin-v2.js",
+    "test:load": "node scripts/load-test-v2.mjs"
   },
   "engines": {
     "node": ">=20"

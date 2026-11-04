@@ -5,7 +5,8 @@
   "description": "E-Voting Ketua dan Wakil Ketua DPT Politeknik Agraria STPN 2026-2027",
   "scripts": {
     "start": "node server-online.js",
-    "start:local": "node server.js"
+    "start:local": "node server.js",
+    "test:load:v2": "node scripts/load-test-v2.mjs"
   },
   "engines": {
     "node": ">=20"

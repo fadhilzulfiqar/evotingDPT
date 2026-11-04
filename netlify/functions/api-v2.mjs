@@ -305,8 +305,9 @@ async function finalizePendingVote(userId) {
   const confirmed = await votes.get(participationKey, { type: 'json', consistency: 'strong' });
   if (confirmed?.state !== 'done') return { state: 'pending' };
 
-  // Once the participation record is finalized, its temporary request token is removed.
-  // The accepted ballot contains no voter ID and has no permanent join key to the voter.
+  // Remove the temporary request record. The participation record keeps only
+  // an opaque ballot reference so an admin can retract the ballot if the account
+  // is deleted. The dashboard never displays candidate choices by voter identity.
   await votes.delete(pendingKey).catch(() => {});
   return { state: 'done', votedAt: ballotValue.votedAt, ballotRef: requestId };
 }

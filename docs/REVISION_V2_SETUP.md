@@ -5,37 +5,49 @@
 - Pemilih: `/v2`
 - Admin: `/admin-v2`
 - API v2: `/api/v2/*`
-- API dan halaman lama tidak diganti oleh branch ini.
+- API v1 tetap tersedia sampai cutover disetujui.
 
-## Target Netlify yang benar
+## Penyimpanan
 
-Project target adalah `evotedpt.netlify.app`. Pemeriksaan project Netlify menunjukkan project tersebut terakhir dipublikasikan melalui Netlify Drop. Repository yang muncul pada commit deploy adalah `fadhilzulfiqar/evotingDPT`, tetapi project target belum menghasilkan Deploy Preview dari branch ini. Project lain bernama `evotingdpt` terhubung ke GitHub dan menghasilkan preview untuk PR, tetapi domain serta data pemilihnya berbeda. Jangan gunakan preview `evotingdpt` sebagai validasi untuk target `evotedpt`. Hubungkan project `evotedpt` ke repository `fadhilzulfiqar/evotingDPT` sebelum menguji deploy preview atau mempromosikan kode.
+Versi v2 menggunakan Netlify Blobs untuk seluruh data. Tidak diperlukan `DATABASE_URL`, Neon, Supabase, atau server PostgreSQL.
 
-## Rilis dua tahap
+Store dan prefix data:
+- Konfigurasi: `evoting-config`, key `v2/main`
+- Akun: `evoting-users`, key `user/*` dan `username/*`
+- Partisipasi v2: `evoting-votes`, prefix `v2/participation/*`
+- Surat suara anonim: `evoting-votes`, prefix `v2/ballot/*`
+- Transaksi sementara: `evoting-votes`, prefix `v2/pending/*`
+- Audit admin: `evoting-votes`, prefix `v2/audit/*`
+- Sesi dan admin: store Netlify Blobs yang telah digunakan aplikasi.
 
-**Tahap 1 — pre-backup:** branch ini hanya menambahkan `/v2`, `/admin-v2`, dan `/api/v2/*`. Halaman utama, `/admin`, dan API v1 tetap berjalan seperti semula. Tidak ada redirect cutover dan tidak ada data lama yang diubah.
+Partisipasi hanya berisi status dan waktu. Ballot hanya berisi pilihan Ketua, pilihan Wakil, waktu, dan versi konfigurasi. Selama request diproses, token transaksi sementara menghubungkan klaim pending dengan ballot pending agar retry dapat dipulihkan. Setelah partisipasi selesai, token tersebut dihapus dan tidak ada ID pemilih pada ballot final.
 
-**Tahap 2 — cutover:** hanya setelah backup legacy berhasil dan manifest diverifikasi, terapkan rilis terpisah yang mengarahkan `/` serta `/index.html` ke `/v2`, mengarahkan `/admin` serta `/admin.html` ke `/admin-v2`, dan membuat API v1 read-only. Jangan jalankan tahap 2 sebelum backup terverifikasi.
+## Pemilihan
 
-## Database wajib untuk membuka pemilihan
+1. Admin mengatur dua calon Ketua dan dua calon Wakil, masing-masing dengan nama dan foto.
+2. Admin membuka status pemilihan setelah semua data lengkap.
+3. Pemilih wajib memilih satu calon dari setiap jabatan.
+4. Backend membuat klaim per akun menggunakan `onlyIfNew`.
+5. Backend menyimpan satu ballot anonim yang memuat kedua pilihan.
+6. Dashboard memantau partisipasi dan hanya menampilkan hasil kandidat setelah pemilihan ditutup.
 
-Netlify Functions memakai PostgreSQL untuk transaksi suara. Tambahkan environment variable:
+## Backup legacy
 
-- `DATABASE_URL`: pooled PostgreSQL connection string dari Neon, Supabase, atau penyedia PostgreSQL lain. Gunakan endpoint pooler/serverless yang disediakan provider.
-- `ADMIN_BOOTSTRAP_PASSWORD`: password awal admin yang kuat (minimal 8 karakter), bila belum tersedia pada store admin.
-- Untuk Deploy Preview, set `ADMIN_BOOTSTRAP_PASSWORD` pada konteks preview karena store admin preview terisolasi dari production.
+Sebelum cutover:
+1. Tutup pemilihan trial lama pada dashboard v1.
+2. Masuk ke `/admin-v2` pada production.
+3. Buka menu Keamanan & Arsip.
+4. Jalankan **Buat backup data trial lama**.
+5. Periksa backup ID, jumlah akun, voter-lock, ballot, dan checksum.
+6. Jangan menghapus store lama sebelum arsip diverifikasi.
 
-Jangan commit connection string atau password ke GitHub. Untuk Netlify Deploy Preview/Branch Deploy, gunakan database staging yang terpisah dari database production.
+## Reset v2
 
-Netlify Blobs pada preview menggunakan nama store terpisah dengan prefix `v2-preview-`. Store production yang lama tetap memakai nama semula.
+Reset hanya dapat dilakukan pada production ketika status tidak open/closing. Backend memulihkan transaksi pending, menyalin ballot dan partisipasi ke arsip privat Netlify Blobs, memverifikasi salinan dan checksum, baru menghapus data aktif v2. Akun pemilih dan konfigurasi calon tidak dihapus.
 
-## Langkah uji sebelum production
+## Load test
 
-1. Hubungkan Deploy Preview ke database staging melalui `DATABASE_URL`.
-2. Masuk ke `/admin-v2` pada URL preview.
-3. Tambahkan akun uji dan isi dua calon Ketua serta dua calon Wakil. Setiap calon harus memiliki nama dan foto.
-4. Simpan konfigurasi, kemudian ubah status menjadi Dibuka.
-5. Jalankan load test dari komputer lokal dengan Node.js 20 atau lebih baru:
+Jalankan pada deploy preview, bukan domain pemilihan produksi:
 
 ```bash
 BASE_URL="https://URL-DEPLOY-PREVIEW" \
@@ -45,28 +57,6 @@ VU_COUNT=100 \
 node scripts/load-test-v2.mjs
 ```
 
-Script membuat akun uji baru, login bersamaan, lalu mengirim 100 surat suara secara paralel. Ia juga memastikan percobaan suara kedua pada akun yang sama ditolak. Jalankan hanya pada staging karena akun dan surat suara uji akan tertinggal sampai admin melakukan reset terarsip.
+Script membuat akun uji, login secara paralel, mengirim pilihan Ketua dan Wakil secara serentak, mencoba suara kedua, lalu memeriksa jumlah partisipasi selesai dan transaksi tertunda.
 
-## Backup legacy sebelum cutover
-
-Setelah rilis tahap 1 dipromosikan ke production (halaman utama lama masih tetap aktif):
-
-1. Buka dashboard lama `/admin` dan tutup pemungutan suara trial (status CLOSED).
-2. Buka `/admin-v2` pada domain production dan masuk menggunakan akun admin yang sama.
-3. Buka menu Keamanan & Arsip.
-4. Jalankan **Buat backup data trial lama**. Backend menolak backup jika status lama masih OPEN atau snapshot berubah selama penyalinan.
-5. Pastikan notifikasi menampilkan backup ID dan jumlah record voter-lock serta ballot yang disalin.
-6. Verifikasi backup ID dan jumlah record sebelum menyetujui rilis tahap 2 (cutover).
-
-Backup legacy hanya diizinkan pada Netlify Production Context. Data asli pada `evoting-config` dan `evoting-votes` tidak dihapus. Arsip bersifat privat karena struktur voter-lock lama dapat mengandung hubungan internal antara akun dan pilihan.
-
-## Catatan privasi dan kapasitas
-
-Selama status pemilihan `open`, rekap perolehan setiap calon disembunyikan dari dashboard admin. Admin tetap melihat jumlah akun yang sudah/belum berpartisipasi. Rekap calon baru tersedia setelah pemilihan ditutup untuk mengurangi potensi bias.
-
-
-- Tabel partisipasi menyimpan ID pemilih dan waktu, bukan pilihan.
-- Tabel ballot menyimpan pilihan Ketua dan Wakil, tanpa ID pemilih atau foreign key ke pemilih.
-- Dua pilihan dan status penggunaan hak suara disimpan dalam satu transaksi PostgreSQL.
-- Admin hanya melihat status partisipasi per akun dan hasil agregat per jabatan.
-- Target 100 pemilih serentak belum dianggap lulus sebelum script beban dijalankan pada staging dengan paket Netlify dan konfigurasi database yang sama seperti production.
+Netlify Blobs mendukung conditional writes, tetapi bukan transaksi multi-record. Karena itu hasil load test harus diperiksa; kapasitas 100 pemilih tidak boleh dianggap lulus sebelum pengujian pada deployment yang sesungguhnya berhasil.

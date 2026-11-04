@@ -87,7 +87,8 @@ const duplicateResponse = await request('/api/v2/vote', {
   body: JSON.stringify({
     chairCandidateId: 'K01',
     viceCandidateId: 'W01',
-    idempotencyKey: crypto.randomUUID()
+    idempotencyKey: crypto.randomUUID(),
+    configVersion: Number(electionConfig.configVersion || 1)
   })
 });
 const duplicateGuardPassed = duplicateResponse.status === 409;

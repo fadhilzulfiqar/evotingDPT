@@ -274,9 +274,11 @@ async function handle(event) {
       for (const [name, source] of Object.entries(sourceStores)) {
         const listing = await source.list();
         backupCounts[name] = listing.blobs.length;
-        for (const blob of listing.blobs) {
-          const value = await source.get(blob.key, { type: 'json', consistency: 'strong' });
-          if (value !== null && value !== undefined) { const checksum = crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex'); await stores.archive().setJSON('backup/' + archiveId + '/' + name + '/' + blob.key, { checksum, value }, { onlyIfNew: true }); }
+        for (let i = 0; i < listing.blobs.length; i += 10) {
+          await Promise.all(listing.blobs.slice(i, i + 10).map(async blob => {
+            const value = await source.get(blob.key, { type: 'json', consistency: 'strong' });
+            if (value !== null && value !== undefined) { const checksum = crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex'); await stores.archive().setJSON('backup/' + archiveId + '/' + name + '/' + blob.key, { checksum, value }, { onlyIfNew: true }); }
+          }));
         }
       }
       const verify = {};
@@ -289,12 +291,15 @@ async function handle(event) {
       await stores.archive().setJSON('migration/in-progress', { archiveId, startedAt: new Date().toISOString() });
       const oldUsers = await legacy.users().list({ prefix: 'user/' });
       let imported = 0;
-      for (const blob of oldUsers.blobs) {
-        const user = await legacy.users().get(blob.key, { type: 'json', consistency: 'strong' });
-        if (!user?.id || !user?.passwordHash) continue;
-        const created = await stores.users().setJSON('user/' + user.id, { ...user, active: true, migratedFromV1: true }, { onlyIfNew: true });
-        await stores.users().setJSON('username/' + normalizeUsername(user.username), { id: user.id }, { onlyIfNew: true });
-        if (created.modified) imported++;
+      for (let i = 0; i < oldUsers.blobs.length; i += 10) {
+        const batch = await Promise.all(oldUsers.blobs.slice(i, i + 10).map(async blob => {
+          const user = await legacy.users().get(blob.key, { type: 'json', consistency: 'strong' });
+          if (!user?.id || !user?.passwordHash) return 0;
+          const created = await stores.users().setJSON('user/' + user.id, { ...user, active: true, migratedFromV1: true }, { onlyIfNew: true });
+          await stores.users().setJSON('username/' + normalizeUsername(user.username), { id: user.id }, { onlyIfNew: true });
+          return created.modified ? 1 : 0;
+        }));
+        imported += batch.reduce((sum, value) => sum + value, 0);
       }
       const markerValue = { archiveId, backupCounts, verify, importedUsers: imported, completedAt: new Date().toISOString(), legacyTrialVotesArchivedNotImported: true };
       await stores.archive().setJSON('migration/complete', markerValue, { onlyIfNew: true });
@@ -341,9 +346,9 @@ async function handle(event) {
       const body = parseBody(event);
       const rows = Array.isArray(body.rows) ? body.rows.slice(0, 500) : [];
       let added = 0; const skipped = [];
-      for (const row of rows) {
-        const r = await addUser(row);
-        if (r.ok) added++; else skipped.push({ username: String(row?.username || ''), reason: r.error });
+      for (let i = 0; i < rows.length; i += 10) {
+        const batch = await Promise.all(rows.slice(i, i + 10).map(row => addUser(row)));
+        batch.forEach((r, j) => { if (r.ok) added++; else skipped.push({ username: String(rows[i + j]?.username || ''), reason: r.error }); });
       }
       await writeAudit('admin', 'voters-bulk-added', { added, skipped: skipped.length });
       return json(200, { ok: true, added, skipped });

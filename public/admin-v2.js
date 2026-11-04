@@ -1,60 +1,33 @@
 (function(){
-  function installAdminV2(){
-    const tableHead=document.querySelector('#pemilih thead tr');
-    if(tableHead && !tableHead.querySelector('[data-action-col]')){
-      const th=document.createElement('th');
-      th.textContent='Aksi';
-      th.setAttribute('data-action-col','1');
-      tableHead.appendChild(th);
-    }
-    const titleRow=document.querySelector('#pemilih .section-title');
-    if(titleRow && !document.querySelector('#resetElectionBtn')){
-      const btn=document.createElement('button');
-      btn.id='resetElectionBtn';
-      btn.className='btn btn-danger';
-      btn.textContent='RESET PEMILIHAN';
-      btn.onclick=resetElection;
-      titleRow.appendChild(btn);
-    }
-  }
-
-  window.deleteUser=async function(id){
-    const u=data?.users?.find(x=>x.id===id);
-    if(!u)return;
-    if(u.hasVoted){alert('Pemilih yang sudah memilih tidak bisa langsung dihapus. Gunakan Reset Pemilihan terlebih dahulu.');return;}
-    if(!confirm(`Hapus pemilih ${u.name} (${u.username})?`))return;
-    try{
-      await api('/api/admin/users/delete',{method:'POST',body:JSON.stringify({id})});
-      await loadStats();
-      alert('Pemilih berhasil dihapus.');
-    }catch(e){alert(e.message)}
-  };
-
-  window.resetElection=async function(){
-    if(!confirm('Reset pemilihan akan menghapus seluruh perolehan suara dan mengubah semua akun menjadi BELUM MEMILIH. Lanjutkan?'))return;
-    if(!confirm('Konfirmasi sekali lagi: reset seluruh hasil pemilihan sekarang?'))return;
-    try{
-      await api('/api/admin/reset-practice',{method:'POST',body:'{}'});
-      await loadStats();
-      alert('Data pemilihan berhasil direset. Daftar pemilih tetap tersimpan.');
-    }catch(e){alert(e.message)}
-  };
-
-  window.renderUsers=function(){
-    if(!data)return;
-    installAdminV2();
-    const q=(document.querySelector('#searchUser')?.value||'').toLowerCase();
-    const rows=data.users.filter(u=>(u.name+' '+u.username).toLowerCase().includes(q));
-    document.querySelector('#userRows').innerHTML=rows.map((u,i)=>`<tr>
-      <td>${i+1}</td>
-      <td>${esc(u.name)}</td>
-      <td>${esc(u.username)}</td>
-      <td><span class="badge ${u.hasVoted?'open':''}">${u.hasVoted?'SUDAH MEMILIH':'BELUM MEMILIH'}</span></td>
-      <td>${u.votedAt?new Date(u.votedAt).toLocaleString('id-ID'):'-'}</td>
-      <td>${u.hasVoted?'<span class="mini">Terkunci</span>':`<button class="btn btn-danger" onclick="deleteUser('${u.id}')">Hapus</button>`}</td>
-    </tr>`).join('');
-  };
-
-  installAdminV2();
-  setTimeout(()=>{installAdminV2(); if(typeof data!=='undefined'&&data)renderUsers();},500);
+'use strict';
+var API='/api-v2',stats=null,configDraft=null,tab='overview';
+var $=s=>document.querySelector(s);
+function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+async function api(path,opt){var o=Object.assign({method:'GET',credentials:'same-origin',cache:'no-store',headers:{}},opt||{});o.headers=Object.assign({'Content-Type':'application/json'},o.headers||{});var r=await fetch(API+path,o),d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Permintaan gagal.');return d}
+function msg(target,text,type){var e=$(target);if(e)e.innerHTML=text?'<div class="toast '+(type||'error')+'">'+esc(text)+'</div>':''}
+function heading(k,t,d){return '<div class="page-heading"><div><span class="eyebrow">'+esc(k)+'</span><h1>'+esc(t)+'</h1><p>'+esc(d)+'</p></div></div>'}
+function stat(label,value,sub){return '<div class="stat-card"><div class="stat-label">'+esc(label)+'</div><div class="stat-value">'+esc(value)+'</div><div class="stat-sub">'+esc(sub)+'</div></div>'}
+function statusName(s){return s==='open'?'PEMILIHAN DIBUKA':s==='closed'?'PEMILIHAN DITUTUP':'BELUM DIMULAI'}
+function renderOverview(){var c=stats.config;var h=heading('PUSAT KENDALI V2','Ringkasan pemilihan','Pantau partisipasi pemilih dan hasil terpisah untuk setiap jabatan.');h+='<div class="page-heading"><span class="status-chip '+(c.status==='open'?'open':c.status==='closed'?'closed':'')+'">'+statusName(c.status)+'</span></div><div class="stats-grid">'+stat('TOTAL PEMILIH',stats.total,'Akun aktif')+stat('SUDAH MEMILIH',stats.voted,'Surat suara lengkap')+stat('BELUM MEMILIH',stats.remaining,'Belum mengirim surat suara')+stat('PARTISIPASI',stats.participation+'%','Tingkat partisipasi')+'</div><section class="panel"><div class="panel-head"><div><span class="eyebrow">PARTISIPASI</span><h2>Progres pemungutan suara</h2></div><strong class="big-percent">'+stats.participation+'%</strong></div><div class="progress-track"><div class="progress-fill" style="width:'+Math.min(100,stats.participation)+'%"></div></div><div class="progress-meta"><span>'+stats.voted+' sudah memilih</span><span>'+stats.remaining+' belum memilih</span></div><p class="mini-note">Total surat suara anonim: '+stats.ballotTotal+'. Pilihan individual tidak tersedia di dashboard.</p></section><section class="panel"><span class="eyebrow">HASIL PER JABATAN</span><h2>Rekapitulasi terpisah</h2><p class="muted tiny">Hasil Ketua dan Wakil dihitung secara independen. Tidak ada tabel yang menghubungkan pemilih dengan pilihannya.</p><button class="btn btn-outline btn-small" onclick="window.EvotingAdminV2.openTab(\'results\')">Lihat hasil →</button></section>';$('#v2AdminContent').innerHTML=h}
+function renderCandidateGroup(title,key,items){var h='<div class="panel"><div class="panel-head"><div><span class="eyebrow">KANDIDAT</span><h2>'+title+'</h2></div></div><div class="v2-admin-candidate-grid">';items.forEach((c,i)=>{h+='<div class="v2-admin-candidate"><img id="'+key+'Preview'+i+'" src="'+(c.photo?esc(c.photo):'')+'" alt="Foto '+title+' '+(i+1)+'"><label>Nomor urut '+(i+1)+'<input value="'+(i+1)+'" disabled></label><label>Nama lengkap<input id="'+key+'Name'+i+'" maxlength="120" value="'+esc(c.name||'')+'" placeholder="Nama lengkap calon"></label><label>Foto calon<input id="'+key+'Photo'+i+'" type="file" accept="image/jpeg,image/png,image/webp" onchange="window.EvotingAdminV2.pickPhoto(this,\''+key+'\','+i+')"></label><div class="v2-photo-current" id="'+key+'PhotoLabel'+i+'">'+(c.photo?'Foto tersimpan':'Foto belum diunggah')+'</div></div>'});h+='</div></div>';return h}
+function renderCandidates(){configDraft=JSON.parse(JSON.stringify(stats.config));var h=heading('KONFIGURASI KANDIDAT','Calon Ketua dan Wakil','Setiap jabatan memiliki dua calon independen. Nama dan foto saja yang ditampilkan kepada pemilih.');h+='<section class="panel"><div class="form-grid"><label class="full">Judul pemilihan<input id="v2CfgTitle" value="'+esc(configDraft.title)+'"></label><label>Institusi<input id="v2CfgInstitution" value="'+esc(configDraft.institution)+'"></label><label>Periode<input id="v2CfgPeriod" value="'+esc(configDraft.period)+'"></label><label class="full">Tagline<input id="v2CfgTagline" value="'+esc(configDraft.tagline)+'"></label><label>Status pemilihan<select id="v2CfgStatus"><option value="scheduled">Belum dimulai</option><option value="open">Dibuka</option><option value="closed">Ditutup</option></select></label></div></section>';h+=renderCandidateGroup('Calon Ketua','chair',configDraft.chairCandidates)+renderCandidateGroup('Calon Wakil Ketua','vice',configDraft.viceCandidates);h+='<div class="button-row"><button class="btn btn-gold" onclick="window.EvotingAdminV2.saveConfig()">Simpan konfigurasi V2</button></div><p class="tiny muted">Foto JPG/PNG/WebP maksimal 800 KB per calon. Kandidat tidak dapat diubah saat pemilihan berstatus dibuka.</p>';$('#v2AdminContent').innerHTML=h;$('#v2CfgStatus').value=configDraft.status}
+function pickPhoto(input,key,index){var f=input.files&&input.files[0];if(!f)return;if(f.size>800000){alert('Maksimal 800 KB per foto.');input.value='';return}var rd=new FileReader();rd.onload=function(){var group=key==='chair'?'chairCandidates':'viceCandidates';configDraft[group][index].photo=rd.result;$('#'+key+'Preview'+index).src=rd.result;$('#'+key+'PhotoLabel'+index).textContent='Foto siap disimpan'};rd.readAsDataURL(f)}
+async function saveConfig(){if(!configDraft)return;configDraft.title=$('#v2CfgTitle').value.trim();configDraft.institution=$('#v2CfgInstitution').value.trim();configDraft.period=$('#v2CfgPeriod').value.trim();configDraft.tagline=$('#v2CfgTagline').value.trim();configDraft.status=$('#v2CfgStatus').value;['chair','vice'].forEach(key=>{var group=key==='chair'?'chairCandidates':'viceCandidates';configDraft[group].forEach((c,i)=>c.name=$('#'+key+'Name'+i).value.trim())});try{await api('/admin/config',{method:'POST',body:JSON.stringify(configDraft)});await loadStats();render('candidates');msg('#v2AdminFeedback','Konfigurasi kandidat berhasil disimpan.','success')}catch(e){msg('#v2AdminFeedback',e.message,'error')}}
+function renderVoters(){var h=heading('MANAJEMEN AKUN','Data pemilih','Impor akun lama setelah backup diverifikasi atau tambahkan pemilih baru.');h+='<div class="dashboard-grid"><section class="panel"><span class="eyebrow">TAMBAH AKUN</span><h2>Tambah satu pemilih</h2><div class="form-grid"><label class="full">Nama lengkap<input id="v2NewName"></label><label>Username<input id="v2NewUsername"></label><label>Password<input id="v2NewPassword" type="text"></label></div><button class="btn btn-gold" style="margin-top:14px" onclick="window.EvotingAdminV2.addUser()">Tambah pemilih</button></section><section class="panel"><span class="eyebrow">IMPOR MASSAL</span><h2>Format daftar</h2><p class="tiny muted">Satu baris: Nama | Username | Password</p><textarea id="v2Bulk" rows="7" placeholder="Nama Pemilih | 12345678 | abcde"></textarea><button class="btn btn-outline" style="margin-top:12px" onclick="window.EvotingAdminV2.bulk()">Impor akun</button></section></div><section class="panel"><div class="panel-head"><div><span class="eyebrow">DAFTAR PEMILIH</span><h2>Status partisipasi</h2></div><input id="v2Search" class="search-input" placeholder="Cari nama / username" oninput="window.EvotingAdminV2.filter()"></div><div class="table-wrap"><table class="data-table"><thead><tr><th>NO</th><th>NAMA</th><th>USERNAME</th><th>STATUS</th><th>WAKTU</th><th>AKSI</th></tr></thead><tbody id="v2VoterRows"></tbody></table></div></section>';$('#v2AdminContent').innerHTML=h;renderVoterRows()}
+function renderVoterRows(){if(!stats||!$('#v2VoterRows'))return;var q=($('#v2Search')?.value||'').toLowerCase();var users=stats.users.filter(u=>(u.name+' '+u.username).toLowerCase().includes(q));$('#v2VoterRows').innerHTML=users.map((u,i)=>'<tr><td>'+(i+1)+'</td><td>'+esc(u.name)+'</td><td><code>'+esc(u.username)+'</code></td><td><span class="table-status '+(u.hasVoted?'done':'pending')+'">'+(u.hasVoted?'SUDAH MEMILIH':'BELUM MEMILIH')+'</span></td><td>'+(u.votedAt?esc(new Date(u.votedAt).toLocaleString('id-ID')):'-')+'</td><td>'+(u.hasVoted?'<span class="tiny muted">Terkunci</span>':'<button class="btn btn-danger btn-small" onclick="window.EvotingAdminV2.deleteUser(\''+esc(u.id)+'\')">Hapus</button>')+'</td></tr>').join('')||'<tr><td colspan="6">Tidak ada data.</td></tr>'}
+async function addUser(){try{await api('/admin/users/add',{method:'POST',body:JSON.stringify({name:$('#v2NewName').value,username:$('#v2NewUsername').value,password:$('#v2NewPassword').value})});await loadStats();render('voters');msg('#v2AdminFeedback','Akun berhasil ditambahkan.','success')}catch(e){msg('#v2AdminFeedback',e.message,'error')}}
+async function bulk(){var rows=$('#v2Bulk').value.split(/\r?\n/).map(x=>x.split('|')).filter(x=>x.length>=3).map(x=>({name:x[0].trim(),username:x[1].trim(),password:x[2].trim()}));if(!rows.length)return msg('#v2AdminFeedback','Tidak ada baris valid.','error');try{var r=await api('/admin/users/bulk',{method:'POST',body:JSON.stringify({rows})});await loadStats();render('voters');msg('#v2AdminFeedback',r.added+' akun ditambahkan; '+r.skipped.length+' dilewati.','success')}catch(e){msg('#v2AdminFeedback',e.message,'error')}}
+async function deleteUser(id){var u=stats.users.find(x=>x.id===id);if(!u||u.hasVoted)return alert('Akun yang sudah memilih tidak dapat dihapus.');if(!confirm('Hapus akun '+u.name+'?'))return;try{await api('/admin/users/delete',{method:'POST',body:JSON.stringify({id})});await loadStats();render('voters');msg('#v2AdminFeedback','Akun dihapus.','success')}catch(e){msg('#v2AdminFeedback',e.message,'error')}}
+function renderResults(){var c=stats.config,h=heading('REKAPITULASI','Hasil suara','Perolehan suara Ketua dan Wakil dihitung terpisah. Tidak tersedia pemetaan pilihan berdasarkan identitas pemilih.');[['CALON KETUA',c.chairCandidates,stats.chairCounts],['CALON WAKIL KETUA',c.viceCandidates,stats.viceCounts]].forEach(([title,arr,counts])=>{var total=Object.values(counts).reduce((a,b)=>a+Number(b||0),0);h+='<section class="panel"><span class="eyebrow">HASIL PEMILIHAN</span><h2>'+title+'</h2>';arr.forEach(x=>{var n=Number(counts[x.id]||0),p=total?Math.round(n/total*1000)/10:0;h+='<div class="result-row"><div class="result-label"><b>NO. '+esc(x.number)+'</b><span>'+esc(x.name||'Belum diatur')+'</span><strong>'+n+' suara · '+p+'%</strong></div><div class="progress-track"><div class="progress-fill" style="width:'+p+'%"></div></div></div>'});h+='<p class="mini-note">Total suara jabatan: '+total+'</p></section>'});$('#v2AdminContent').innerHTML=h}
+async function renderAudit(){var ev=await api('/admin/audit');var h=heading('JEJAK ADMINISTRASI','Log audit','Catatan perubahan konfigurasi dan tindakan administrator.');h+='<section class="panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>WAKTU</th><th>AKSI</th><th>DETAIL</th></tr></thead><tbody>'+ev.map(x=>'<tr><td>'+esc(new Date(x.at).toLocaleString('id-ID'))+'</td><td>'+esc(x.action)+'</td><td><code>'+esc(JSON.stringify(x.detail||{}))+'</code></td></tr>').join('')+'</tbody></table></div></section>';$('#v2AdminContent').innerHTML=h}
+function renderSettings(){var h=heading('KONFIGURASI SISTEM','Pengaturan & migrasi','Backup data v1, migrasi akun pemilih, dan kontrol status pemilihan.');h+='<section class="v2-migration"><h3>Arsipkan dan migrasikan data lama</h3><p>Proses ini menyalin konfigurasi, seluruh akun, riwayat suara percobaan, dan data admin v1 ke arsip V2. Setelah backup diverifikasi, hanya akun pemilih beserta hash password yang diimpor. Suara percobaan lama tetap di arsip dan tidak menjadi suara pemilihan baru.</p><button class="btn btn-gold" onclick="window.EvotingAdminV2.migrate()">Jalankan backup & migrasi akun</button><div id="v2MigrationResult" class="tiny muted" style="margin-top:12px"></div></section><section class="panel"><span class="eyebrow">KEAMANAN ADMIN</span><h2>Ganti password admin V2</h2><div class="form-grid"><label>Password saat ini<input id="v2OldPass" type="password"></label><label>Password baru<input id="v2NewPass" type="password" minlength="8"></label></div><button class="btn btn-outline" style="margin-top:12px" onclick="window.EvotingAdminV2.password()">Ganti password</button></section><section class="panel"><span class="eyebrow">STATUS VERSI</span><h2>Database V2 terisolasi</h2><p class="tiny muted">Data v1 tidak ditulis atau dihapus oleh fitur V2. Jangan membuka pemilihan sebelum migrasi akun dan pengujian penerimaan selesai.</p><div class="notice-box">API: <b>/api-v2/health</b><br>Portal pemilih: <b>/v2.html</b><br>Admin: <b>/admin-v2.html</b></div></section>';$('#v2AdminContent').innerHTML=h}
+function render(t){tab=t||'overview';document.querySelectorAll('#v2AdminShell .admin-nav button').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));if(!stats)return;if(tab==='candidates')renderCandidates();else if(tab==='voters')renderVoters();else if(tab==='results')renderResults();else if(tab==='audit')renderAudit().catch(e=>msg('#v2AdminFeedback',e.message,'error'));else if(tab==='settings')renderSettings();else renderOverview()}
+async function loadStats(){stats=await api('/admin/stats');$('#v2AdminLogin').classList.add('hidden');$('#v2AdminShell').classList.remove('hidden');render(tab)}
+async function login(e){e.preventDefault();var b=$('#v2AdminLoginButton');b.disabled=true;b.textContent='Memeriksa akses...';msg('#v2AdminLoginFeedback','');try{await api('/admin/login',{method:'POST',body:JSON.stringify({username:$('#v2AdminUsername').value,password:$('#v2AdminPassword').value})});$('#v2AdminPassword').value='';await loadStats()}catch(e){msg('#v2AdminLoginFeedback',e.message,'error')}finally{b.disabled=false;b.textContent='Masuk dashboard →'}}
+async function migrate(){if(!confirm('Lanjutkan backup seluruh data v1 dan impor akun pemilih ke database V2? Data v1 tidak akan dihapus. Suara percobaan lama hanya diarsipkan.'))return;var b=document.querySelector('.v2-migration button');b.disabled=true;b.textContent='Membuat backup dan verifikasi...';try{var r=await api('/admin/migrate',{method:'POST',body:'{}'});$('#v2MigrationResult').textContent='Backup terverifikasi. Akun diimpor: '+r.migration.importedUsers+'. Arsip ID: '+r.migration.archiveId;await loadStats()}catch(e){$('#v2MigrationResult').textContent=e.message}finally{b.disabled=false;b.textContent='Jalankan backup & migrasi akun'}}
+async function password(){try{await api('/admin/password',{method:'POST',body:JSON.stringify({oldPassword:$('#v2OldPass').value,newPassword:$('#v2NewPass').value})});location.reload()}catch(e){msg('#v2AdminFeedback',e.message,'error')}}
+async function logout(){try{await api('/admin/logout',{method:'POST',body:'{}'})}catch(e){}location.reload()}
+function init(){$('#v2AdminLoginForm').addEventListener('submit',login);$('#v2AdminLogout').addEventListener('click',logout);document.querySelectorAll('#v2AdminShell .admin-nav button').forEach(b=>b.addEventListener('click',()=>render(b.dataset.tab)));api('/admin/stats').then(data=>{stats=data;$('#v2AdminLogin').classList.add('hidden');$('#v2AdminShell').classList.remove('hidden');render(tab)}).catch(()=>{})}
+window.EvotingAdminV2={openTab:render,pickPhoto,saveConfig,addUser,bulk,deleteUser,filter:renderVoterRows,migrate,password};
+init();
 })();

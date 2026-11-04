@@ -38,7 +38,7 @@ let electionConfig = null;
 let electionClosed = false;
 
 async function closeStagingElection() {
-  if (!adminCookie || !electionConfig || electionClosed) return;
+  if (!adminCookie || !electionConfig || electionConfig.status !== 'open' || electionClosed) return;
   const response = await request('/api/v2/admin/config', {
     method: 'POST',
     headers: { cookie: adminCookie },
@@ -66,11 +66,14 @@ try {
     throw new Error('PostgreSQL is not ready on this staging deployment.');
   }
   const baselineVoted = Number(beforeStats.voted || 0);
+  if (beforeStats.reconciliationOk !== true || Number(beforeStats.totalBallots) !== baselineVoted) {
+    throw new Error('Staging database is not reconciled. Archive/reset the V2 trial before load testing.');
+  }
 
   const electionResponse = await request('/api/v2/election');
   electionConfig = await readJson(electionResponse);
-  if (!electionResponse.ok || electionConfig.setupRequired || electionConfig.status !== 'open') {
-    throw new Error('Staging election must be configured and OPEN before load testing.');
+  if (!electionResponse.ok || electionConfig.setupRequired || !['scheduled', 'closed'].includes(electionConfig.status)) {
+    throw new Error('Close the staging election first. The test creates accounts before opening it.');
   }
 
   const rows = Array.from({ length: count + 1 }, (_, index) => ({
@@ -88,6 +91,17 @@ try {
   if (!importResponse.ok || importResult.added !== rows.length) {
     throw new Error('Could not create all load-test accounts: ' + JSON.stringify(importResult));
   }
+
+  const openResponse = await request('/api/v2/admin/config', {
+    method: 'POST',
+    headers: { cookie: adminCookie },
+    body: JSON.stringify({ ...electionConfig, status: 'open' })
+  });
+  const openResult = await readJson(openResponse);
+  if (!openResponse.ok || !openResult.config) {
+    throw new Error('Could not open the staging election after account import: ' + (openResult.error || openResponse.status));
+  }
+  electionConfig = openResult.config;
 
   const loginStarted = performance.now();
   const sessions = await Promise.all(rows.map(async row => {

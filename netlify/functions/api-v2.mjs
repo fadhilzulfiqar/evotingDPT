@@ -214,16 +214,14 @@ async function finalizePendingVote(userId) {
     configVersion: pending.configVersion
   };
   const ballotWrite = await votes.setJSON(ballotKey, ballotValue, { onlyIfNew: true });
-  if (!ballotWrite.modified) {
-    const existing = await votes.get(ballotKey, { type: 'json', consistency: 'strong' });
-    if (
-      !existing ||
-      existing.chairCandidateId !== ballotValue.chairCandidateId ||
-      existing.viceCandidateId !== ballotValue.viceCandidateId ||
-      existing.configVersion !== ballotValue.configVersion
-    ) {
-      return { state: 'conflict' };
-    }
+  const storedBallot = await votes.get(ballotKey, { type: 'json', consistency: 'strong' });
+  if (
+    !storedBallot ||
+    storedBallot.chairCandidateId !== ballotValue.chairCandidateId ||
+    storedBallot.viceCandidateId !== ballotValue.viceCandidateId ||
+    storedBallot.configVersion !== ballotValue.configVersion
+  ) {
+    return { state: 'pending' };
   }
 
   const latestLock = await votes.getWithMetadata(participationKey, {
@@ -244,10 +242,8 @@ async function finalizePendingVote(userId) {
     votedAt: ballotValue.votedAt
   }, { onlyIfMatch: latestLock.etag });
 
-  if (!doneWrite.modified) {
-    const confirmed = await votes.get(participationKey, { type: 'json', consistency: 'strong' });
-    if (confirmed?.state !== 'done') return { state: 'pending' };
-  }
+  const confirmed = await votes.get(participationKey, { type: 'json', consistency: 'strong' });
+  if (confirmed?.state !== 'done') return { state: 'pending' };
 
   // Once the participation record is finalized, its temporary request token is removed.
   // The accepted ballot contains no voter ID and has no permanent join key to the voter.
@@ -499,19 +495,19 @@ async function getAdminStats() {
   const users = (await Promise.all(
     userList.blobs.map(blob => usersStore.get(blob.key, { type: 'json', consistency: 'strong' }))
   )).filter(Boolean);
-  const participationRecords = (await Promise.all(
-    participationList.blobs.map(blob => votesStore.get(blob.key, { type: 'json', consistency: 'strong' }))
-  )).filter(Boolean);
+  const participationEntries = await Promise.all(
+    participationList.blobs.map(async blob => ({
+      userId: blob.key.slice('v2/participation/'.length),
+      record: await votesStore.get(blob.key, { type: 'json', consistency: 'strong' })
+    }))
+  );
   const ballots = (await Promise.all(
     ballotList.blobs.map(blob => votesStore.get(blob.key, { type: 'json', consistency: 'strong' }))
   )).filter(Boolean);
 
-  const participationByUser = new Map();
-  participationList.blobs.forEach((blob, index) => {
-    const userId = blob.key.slice('v2/participation/'.length);
-    const record = participationRecords[index];
-    if (record) participationByUser.set(userId, record);
-  });
+  const participationByUser = new Map(
+    participationEntries.filter(entry => entry.record).map(entry => [entry.userId, entry.record])
+  );
 
   const chairCounts = { K01: 0, K02: 0 };
   const viceCounts = { W01: 0, W02: 0 };
@@ -868,10 +864,9 @@ async function handleEvent(event) {
       }
 
       if (nextStatus === 'open') {
-        const recovery = await recoverPendingVotes();
-        if (recovery.unresolved.length) {
-          return json(409, { error: 'Selesaikan transaksi pemilih yang tertunda sebelum membuka pemilihan.' });
-        }
+        // A voter with a pending claim but no stored selection must be allowed to retry.
+        // Existing recoverable transactions are completed before the election is reopened.
+        await recoverPendingVotes();
       }
 
       const nextVersion = candidatesChanged ? currentVersion + 1 : currentVersion;

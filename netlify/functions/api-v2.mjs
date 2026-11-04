@@ -213,12 +213,22 @@ async function ensureSchema() {
         await client.query('ALTER TABLE evoting_v2_ballot_archive DROP COLUMN IF EXISTS voted_at');
 
         const ballotConstraints = [
-          "ALTER TABLE evoting_v2_ballots ADD CONSTRAINT evoting_v2_ballots_chair_check CHECK (chair_candidate_id IN ('K01','K02'))",
-          "ALTER TABLE evoting_v2_ballots ADD CONSTRAINT evoting_v2_ballots_vice_check CHECK (vice_candidate_id IN ('W01','W02'))"
+          {
+            name: 'evoting_v2_ballots_chair_check',
+            sql: "ALTER TABLE evoting_v2_ballots ADD CONSTRAINT evoting_v2_ballots_chair_check CHECK (chair_candidate_id IN ('K01','K02'))"
+          },
+          {
+            name: 'evoting_v2_ballots_vice_check',
+            sql: "ALTER TABLE evoting_v2_ballots ADD CONSTRAINT evoting_v2_ballots_vice_check CHECK (vice_candidate_id IN ('W01','W02'))"
+          }
         ];
-        for (const statement of ballotConstraints) {
-          try { await client.query(statement); }
-          catch (error) { if (error.code !== '42710') throw error; }
+        const existingConstraints = await client.query(
+          'SELECT conname FROM pg_constraint WHERE conrelid = \'evoting_v2_ballots\'::regclass AND conname = ANY($1::text[])',
+          [ballotConstraints.map(item => item.name)]
+        );
+        const existingConstraintNames = new Set(existingConstraints.rows.map(row => row.conname));
+        for (const constraint of ballotConstraints) {
+          if (!existingConstraintNames.has(constraint.name)) await client.query(constraint.sql);
         }
         await client.query(
           'INSERT INTO evoting_v2_schema_meta (schema_key,version) VALUES ($1,2) ' +

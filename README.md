@@ -1,29 +1,32 @@
-# EvotingDPT — Portal Pemilihan DPT 2026–2027
+# E-Voting DPT — Portal Pemilihan 2026–2027
 
 ## Versi aplikasi
 
-- **Netlify (aplikasi aktif):** Netlify membangun situs dari folder `public/` sesuai `netlify.toml`. Versi ini memakai Netlify Functions dan Netlify Blobs untuk autentikasi, akun pemilih, konfigurasi, dan penyimpanan suara terpusat.
-- **GitHub Pages (prototipe statis):** file di folder utama repository merupakan versi demo antarmuka berbasis browser. Data pada versi ini tidak tersinkron antarperangkat dan tidak boleh digunakan untuk pemilihan resmi.
+- **Netlify:** frontend pada folder `public/`, API melalui Netlify Functions, dan penyimpanan terpusat menggunakan Netlify Blobs.
+- **Prototipe statis:** file prototipe pada root repository tidak digunakan untuk pemilihan resmi karena penyimpanannya tidak tersinkron antarperangkat.
 
-## Fitur versi Netlify
+## Fitur versi final
 
-- Login pemilih dan administrator dengan sesi server.
-- Satu akun pemilih hanya dapat mengirim satu suara.
-- Dua pasangan calon, foto ketua/wakil, visi, misi, dan slogan dapat dikelola dari dashboard admin.
-- Data pemilih dapat ditambahkan satu per satu atau diimpor secara massal.
-- Rekap suara dan partisipasi tersimpan terpusat.
-- Reset pemilihan tetap tersedia di menu **Keamanan Admin**. Reset menghapus seluruh surat suara dan status hak pilih, tetapi **tidak menghapus daftar akun pemilih**.
-- Reset hanya dapat dilakukan setelah status pemilihan ditutup atau belum dimulai, dan memerlukan dua kali konfirmasi.
+- Pemilih login dengan akun unik.
+- Setiap pemilih wajib memilih satu calon Ketua dan satu calon Wakil dalam satu pengiriman surat suara.
+- Dua calon Ketua dan dua calon Wakil ditampilkan secara terpisah dengan foto, nomor calon, dan nama lengkap.
+- Tidak ada kolom visi-misi.
+- Satu akun hanya dapat menggunakan hak pilih satu kali.
+- Dashboard admin menampilkan total akun, status sudah/belum memilih, transaksi tertunda, serta rekap terpisah untuk Ketua dan Wakil.
+- Identitas/partisipasi pemilih dan isi surat suara disimpan pada key Netlify Blobs yang terpisah. Setelah transaksi selesai, token proses sementara dihapus dan ballot tidak memuat ID pemilih.
+- Reset hanya tersedia setelah pemilihan ditutup, transaksi tertunda dipulihkan, dan backup terverifikasi.
 
 ## Deployment Netlify
 
-- Build publish directory: `public`
+- Publish directory: `public`
 - Functions directory: `netlify/functions`
-- Endpoint pemeriksaan: `/api/health`
-- Penyimpanan: Netlify Blobs
+- Pemilih: `/v2`
+- Admin: `/admin-v2`
+- Health check: `/api/v2/health`
+- Storage: Netlify Blobs
 
-Pastikan environment variable `ADMIN_BOOTSTRAP_PASSWORD` diatur pada Netlify dengan password yang kuat (minimal 8 karakter). Jangan menyimpan password administrator atau password pemilih dalam repository.
+Tidak diperlukan PostgreSQL, Neon, atau environment variable `DATABASE_URL`. Pastikan `ADMIN_BOOTSTRAP_PASSWORD` tersedia bila store admin belum memiliki akun administrator. Jangan menyimpan password dalam repository.
 
-## Catatan keamanan pemilihan
+## Catatan kapasitas dan keamanan
 
-Sebelum pemilihan resmi, lakukan uji coba menyeluruh: login lintas perangkat, satu akun satu suara, percobaan pengiriman ganda, perubahan status buka/tutup, rekap suara, dan prosedur reset. Arsipkan hasil sebelum reset. Pastikan akses dashboard admin hanya diberikan kepada panitia yang berwenang.
+Netlify Blobs menyediakan object storage dengan conditional writes. Ini membantu mencegah klaim hak pilih ganda per akun, tetapi bukan pengganti transaksi database relasional. Lakukan load test pada deploy preview dan rekonsiliasi jumlah partisipasi selesai dengan jumlah ballot sebelum pemilihan resmi. Jangan menyatakan kapasitas 60–100 pemilih serentak lulus sebelum pengujian aktual berhasil.

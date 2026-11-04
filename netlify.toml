@@ -6,6 +6,22 @@
   node_bundler = "esbuild"
 
 [[redirects]]
+  from = "/api-v2/*"
+  to = "/.netlify/functions/api-v2/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/v2"
+  to = "/v2.html"
+  status = 200
+
+[[redirects]]
+  from = "/admin-v2"
+  to = "/admin-v2.html"
+  status = 200
+
+[[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"
   status = 200

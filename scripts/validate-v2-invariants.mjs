@@ -29,6 +29,7 @@ assert.match(ballots, /chair_candidate_id/);
 assert.match(ballots, /vice_candidate_id/);
 assert.doesNotMatch(ballots, /voter_id|username|voted_at|foreign key/i);
 assert.doesNotMatch(ballotArchive, /voter_id|username|voted_at|foreign key/i);
+assert.match(ballots, /UNIQUE \\(election_id, idempotency_key\\)/);
 
 const voteStart = api.indexOf("if (method === 'POST' && route === '/vote')");
 const voteEnd = api.indexOf("if (method === 'POST' && route === '/admin/login')", voteStart);
@@ -42,6 +43,7 @@ assert.match(api, /PRIMARY KEY \(election_id, voter_id\)/);
 assert.match(api, /reconciliationOk/);
 assert.match(api, /archiveReadbackVerified/);
 assert.match(api, /verifyLegacyArchiveStillCurrent/);
+assert.match(api, /legacyBackup = await getLatestLegacyArchiveManifest/);
 assert.match(api, /resultsVisible = electionStatus !== 'open'/);
 assert.doesNotMatch(api, /route === '\/admin\/users\/choices'/);
 

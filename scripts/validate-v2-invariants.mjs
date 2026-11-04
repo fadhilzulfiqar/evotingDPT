@@ -21,12 +21,14 @@ function tableDefinition(source, tableName) {
 
 const participation = tableDefinition(api, 'evoting_v2_participation');
 const ballots = tableDefinition(api, 'evoting_v2_ballots');
+const ballotArchive = tableDefinition(api, 'evoting_v2_ballot_archive');
 assert.match(participation, /voter_id/);
 assert.match(participation, /voted_at/);
 assert.doesNotMatch(participation, /chair_candidate_id|vice_candidate_id|ballot_id/);
 assert.match(ballots, /chair_candidate_id/);
 assert.match(ballots, /vice_candidate_id/);
 assert.doesNotMatch(ballots, /voter_id|username|voted_at|foreign key/i);
+assert.doesNotMatch(ballotArchive, /voter_id|username|voted_at|foreign key/i);
 
 const voteStart = api.indexOf("if (method === 'POST' && route === '/vote')");
 const voteEnd = api.indexOf("if (method === 'POST' && route === '/admin/login')", voteStart);

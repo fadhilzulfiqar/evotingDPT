@@ -48,7 +48,7 @@ node scripts/load-test-v2.mjs
 ```
 
 Script membuat 100 akun: 99 pemilih utama dan satu akun khusus untuk menguji dua request yang datang bersamaan. Script menguji:
-- 100 login dan pengiriman surat suara secara paralel.
+- 100 login dan pengiriman surat suara secara paralel; laporan memuat waktu batch serta latency p50, p95, dan p99 untuk login dan request ballot.
 - Satu akun yang mengirim dua request berbeda secara bersamaan: tepat satu diterima.
 - Retry dengan idempotency key dan pilihan yang sama.
 - Retry dengan idempotency key sama tetapi pilihan berbeda harus ditolak.

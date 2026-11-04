@@ -206,21 +206,46 @@
     } catch (error) { feedback(error.message); }
   }
 
-  function pickPhoto(input, role, index) {
+  async function pickPhoto(input, role, index) {
     const file = input.files && input.files[0]; if (!file) return;
     if (!['image/jpeg','image/png','image/webp'].includes(file.type)) { alert('Gunakan foto JPG, PNG, atau WebP.'); input.value=''; return; }
-    if (file.size > 900000) { alert('Ukuran setiap foto maksimal 900 KB. Kompres foto terlebih dahulu.'); input.value=''; return; }
-    const reader = new FileReader();
-    reader.onload = () => {
+    if (file.size > 8 * 1024 * 1024) { alert('Ukuran file awal maksimal 8 MB.'); input.value=''; return; }
+    try {
+      const source = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('Foto tidak dapat dibaca.'));
+        reader.readAsDataURL(file);
+      });
+      const image = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('Format foto tidak dapat diproses.'));
+        img.src = source;
+      });
+      const scale = Math.min(1, 1100 / Math.max(image.width, image.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(image.width * scale));
+      canvas.height = Math.max(1, Math.round(image.height * scale));
+      canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+      let quality = 0.82;
+      let dataUrl = canvas.toDataURL('image/jpeg', quality);
+      while (dataUrl.length > 650000 && quality > 0.45) {
+        quality -= 0.08;
+        dataUrl = canvas.toDataURL('image/jpeg', quality);
+      }
+      if (dataUrl.length > 700000) throw new Error('Foto masih terlalu besar setelah kompresi.');
       if (!draftConfig) return;
-      draftConfig.candidates[role][index].photo = reader.result;
+      draftConfig.candidates[role][index].photo = dataUrl;
       const preview = $('#preview-' + role + '-' + index);
       if (preview) {
-        if (preview.tagName === 'IMG') preview.src = reader.result;
-        else { const img = document.createElement('img'); img.id = preview.id; img.alt = 'Foto calon'; img.src = reader.result; preview.replaceWith(img); }
+        if (preview.tagName === 'IMG') preview.src = dataUrl;
+        else { const img = document.createElement('img'); img.id = preview.id; img.alt = 'Foto calon'; img.src = dataUrl; preview.replaceWith(img); }
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (error) {
+      alert(error.message || 'Foto gagal diproses.');
+      input.value = '';
+    }
   }
 
   async function addVoter() {
@@ -279,12 +304,44 @@
 
   async function changePassword() {
     const oldPassword = $('#oldAdminPassword').value; const newPassword = $('#newAdminPassword').value;
-    if (!newPassword || newPassword.length < 8) return feedback('Password baru minimal 8 karakter.');
+    if (!newPassword || newPassword.length < 12) return feedback('Password baru minimal 12 karakter.');
     try {
       await api('/admin/password', { method:'POST', body:JSON.stringify({oldPassword,newPassword}) });
-      $('#adminShell').classList.add('hidden'); $('#adminLoginView').classList.remove('hidden');
-      feedback('Password berhasil diganti. Silakan login kembali.', 'success', '#adminLoginFeedback');
+      window.location.href = '/admin';
     } catch (error) { feedback(error.message); }
+  }
+
+  async function recoverAdminPassword(event) {
+    event.preventDefault();
+    const bootstrapPassword = $('#adminBootstrapCode').value;
+    const newPassword = $('#adminRecoveryPassword').value;
+    const confirmPassword = $('#adminRecoveryConfirm').value;
+    if (newPassword.length < 12) return feedback('Password baru minimal 12 karakter.', 'error', '#adminRecoveryFeedback');
+    if (newPassword !== confirmPassword) return feedback('Konfirmasi password tidak sama.', 'error', '#adminRecoveryFeedback');
+    const button = $('#adminRecoveryButton');
+    button.disabled = true; button.textContent = 'Memperbarui password...';
+    try {
+      await api('/admin/recover', { method:'POST', body:JSON.stringify({bootstrapPassword,newPassword}) });
+      $('#adminRecoveryForm').classList.add('hidden');
+      $('#adminLoginForm').classList.remove('hidden');
+      $('#adminRecoveryForm').reset();
+      feedback('Password admin berhasil diperbarui. Silakan masuk menggunakan password baru.', 'success', '#adminLoginFeedback');
+    } catch (error) {
+      feedback(error.message, 'error', '#adminRecoveryFeedback');
+    } finally {
+      button.disabled = false; button.innerHTML = 'Perbarui password <span>→</span>';
+    }
+  }
+
+  async function checkBootstrapStatus() {
+    try {
+      const status = await api('/admin/setup-status');
+      if (status.setupRequired && !status.bootstrapConfigured) {
+        feedback('Project belum memiliki ADMIN_BOOTSTRAP_PASSWORD. Atur satu variabel tersebut di Environment variables Netlify, lalu deploy ulang.', 'error', '#adminLoginFeedback');
+      }
+    } catch (error) {
+      feedback('Tidak dapat memeriksa status autentikasi: ' + error.message, 'error', '#adminLoginFeedback');
+    }
   }
 
   function exportCsv() {
@@ -302,13 +359,24 @@
 
   async function logout() {
     try { await api('/admin/logout', {method:'POST',body:'{}'}); } catch (_) {}
-    window.location.href='/admin-v2';
+    window.location.href='/admin';
   }
 
   function init() {
     $('#adminLoginForm').addEventListener('submit', login);
+    $('#adminRecoveryForm').addEventListener('submit', recoverAdminPassword);
+    $('#showRecoveryButton').addEventListener('click', () => {
+      $('#adminLoginForm').classList.add('hidden');
+      $('#adminRecoveryForm').classList.remove('hidden');
+      feedback('', 'error', '#adminRecoveryFeedback');
+    });
+    $('#hideRecoveryButton').addEventListener('click', () => {
+      $('#adminRecoveryForm').classList.add('hidden');
+      $('#adminLoginForm').classList.remove('hidden');
+    });
     $('#logoutButton').addEventListener('click', logout);
     document.querySelectorAll('.admin-nav button').forEach(button => button.addEventListener('click', () => renderTab(button.dataset.tab)));
+    checkBootstrapStatus();
     loadStats().catch(() => {});
   }
 

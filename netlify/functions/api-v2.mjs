@@ -222,7 +222,11 @@ async function finalizePendingVote(userId) {
   });
   if (!lockEntry?.data) return { state: 'none' };
   if (lockEntry.data.state === 'done') {
-    return { state: 'done', votedAt: lockEntry.data.votedAt || null };
+    return {
+      state: 'done',
+      votedAt: lockEntry.data.votedAt || null,
+      ballotRef: lockEntry.data.ballotRef || null
+    };
   }
 
   const requestId = String(lockEntry.data.requestId || '');
@@ -264,6 +268,15 @@ async function finalizePendingVote(userId) {
     return { state: 'pending' };
   }
 
+  // A reset increments configVersion before clearing data. This second check
+  // prevents an in-flight ballot from being finalized after that reset barrier.
+  const latestConfig = await getV2Config();
+  if (Number(latestConfig.configVersion || 1) !== Number(ballotValue.configVersion)) {
+    await votes.delete(ballotKey).catch(() => {});
+    await votes.delete(pendingKey).catch(() => {});
+    return { state: 'conflict' };
+  }
+
   const latestLock = await votes.getWithMetadata(participationKey, {
     type: 'json',
     consistency: 'strong'
@@ -271,7 +284,11 @@ async function finalizePendingVote(userId) {
   if (!latestLock?.data) return { state: 'pending' };
   if (latestLock.data.state === 'done') {
     await votes.delete(pendingKey).catch(() => {});
-    return { state: 'done', votedAt: latestLock.data.votedAt || ballotValue.votedAt };
+    return {
+      state: 'done',
+      votedAt: latestLock.data.votedAt || ballotValue.votedAt,
+      ballotRef: latestLock.data.ballotRef || requestId
+    };
   }
   if (latestLock.data.requestId !== requestId || !latestLock.etag) {
     return { state: 'conflict' };
@@ -279,7 +296,10 @@ async function finalizePendingVote(userId) {
 
   const doneWrite = await votes.setJSON(participationKey, {
     state: 'done',
-    votedAt: ballotValue.votedAt
+    votedAt: ballotValue.votedAt,
+    // Opaque reference used only to retract this ballot if its account is deleted.
+    // This creates a technical link between the account and its anonymous ballot.
+    ballotRef: requestId
   }, { onlyIfMatch: latestLock.etag });
 
   const confirmed = await votes.get(participationKey, { type: 'json', consistency: 'strong' });
@@ -288,7 +308,7 @@ async function finalizePendingVote(userId) {
   // Once the participation record is finalized, its temporary request token is removed.
   // The accepted ballot contains no voter ID and has no permanent join key to the voter.
   await votes.delete(pendingKey).catch(() => {});
-  return { state: 'done', votedAt: ballotValue.votedAt };
+  return { state: 'done', votedAt: ballotValue.votedAt, ballotRef: requestId };
 }
 
 async function recoverPendingVotes() {
@@ -312,14 +332,30 @@ async function recoverPendingVotes() {
 async function resetElectionData() {
   const configStore = stores.config();
   const votesStore = stores.votes();
-  const config = await getV2Config();
-  if (config.status !== 'closed') {
+  const configEntry = await configStore.getWithMetadata('v2/main', {
+    type: 'json',
+    consistency: 'strong'
+  });
+  const currentConfig = configEntry?.data || await getV2Config();
+
+  if (currentConfig.status !== 'closed') {
     throw new Error('Pemilihan harus berstatus DITUTUP sebelum reset.');
   }
+  if (!configEntry?.etag) {
+    throw new Error('Konfigurasi pemilihan tidak dapat dikunci. Muat ulang dashboard lalu coba lagi.');
+  }
 
-  const recovery = await recoverPendingVotes();
-  if (recovery.unresolved.length) {
-    throw new Error('Ada ' + recovery.unresolved.length + ' transaksi suara yang belum selesai. Reset dibatalkan.');
+  // Increment the election version first. Any vote request still in flight
+  // will fail its final version check and cannot recreate a ballot after reset.
+  const resetVersion = Number(currentConfig.configVersion || 1) + 1;
+  const barrier = await configStore.setJSON('v2/main', {
+    ...currentConfig,
+    status: 'closed',
+    configVersion: resetVersion
+  }, { onlyIfMatch: configEntry.etag });
+
+  if (!barrier.modified) {
+    throw new Error('Konfigurasi berubah bersamaan. Muat ulang dashboard dan ulangi reset.');
   }
 
   const [ballotList, participationList, pendingList] = await Promise.all([
@@ -328,35 +364,33 @@ async function resetElectionData() {
     votesStore.list({ prefix: 'v2/pending/' })
   ]);
 
-  if ((pendingList.blobs || []).length) {
-    throw new Error('Masih ada transaksi suara sementara. Reset dibatalkan agar tidak menghilangkan suara yang belum terselesaikan.');
-  }
-  const unresolvedParticipation = await Promise.all((participationList.blobs || []).map(async item => {
-    const record = await votesStore.get(item.key, { type: 'json', consistency: 'strong' });
-    return record?.state === 'pending' || record?.state === 'deleting';
-  }));
-  if (unresolvedParticipation.some(Boolean)) {
-    throw new Error('Masih ada transaksi atau penghapusan akun yang sedang diproses. Selesaikan terlebih dahulu sebelum reset.');
-  }
-
-  const latestConfig = await getV2Config();
-  if (latestConfig.status !== 'closed') {
-    throw new Error('Status pemilihan tidak lagi DITUTUP. Reset dibatalkan.');
-  }
-
   const counts = {
     ballotRecordsDeleted: (ballotList.blobs || []).length,
     participationRecordsDeleted: (participationList.blobs || []).length,
-    pendingRecordsDeleted: 0
+    pendingRecordsDeleted: (pendingList.blobs || []).length
   };
 
-  // Permanent reset: remove only active ballots and participation locks.
-  // Voter accounts, candidate configuration, and audit history are preserved.
-  for (const item of ballotList.blobs || []) {
-    await votesStore.delete(item.key);
-  }
-  for (const item of participationList.blobs || []) {
-    await votesStore.delete(item.key);
+  // Force reset after closure: do not wait for unused/active voter accounts,
+  // and discard any unfinished transaction records rather than blocking reset.
+  for (const item of ballotList.blobs || []) await votesStore.delete(item.key);
+  for (const item of participationList.blobs || []) await votesStore.delete(item.key);
+  for (const item of pendingList.blobs || []) await votesStore.delete(item.key);
+
+  // Verify and sweep once more for a request that was already finishing while
+  // the reset barrier was being installed.
+  for (let pass = 0; pass < 2; pass += 1) {
+    const [ballots, participation, pending] = await Promise.all([
+      votesStore.list({ prefix: 'v2/ballot/' }),
+      votesStore.list({ prefix: 'v2/participation/' }),
+      votesStore.list({ prefix: 'v2/pending/' })
+    ]);
+    const leftovers = [
+      ...(ballots.blobs || []),
+      ...(participation.blobs || []),
+      ...(pending.blobs || [])
+    ];
+    if (!leftovers.length) break;
+    for (const item of leftovers) await votesStore.delete(item.key);
   }
 
   const [ballotsAfter, participationAfter, pendingAfter] = await Promise.all([
@@ -369,22 +403,37 @@ async function resetElectionData() {
     (participationAfter.blobs || []).length ||
     (pendingAfter.blobs || []).length
   ) {
-    throw new Error('Reset belum tuntas: masih ada data suara aktif. Periksa dashboard sebelum membuka pemilihan.');
+    throw new Error('Reset belum tuntas: masih ada data suara aktif. Status pemilihan tetap DITUTUP; ulangi reset.');
   }
 
-  await configStore.setJSON('v2/main', {
-    ...latestConfig,
-    status: 'scheduled',
-    configVersion: Number(latestConfig.configVersion || 1) + 1
+  const latestConfigEntry = await configStore.getWithMetadata('v2/main', {
+    type: 'json',
+    consistency: 'strong'
   });
+  const latestConfig = latestConfigEntry?.data;
+  if (
+    !latestConfig ||
+    latestConfig.status !== 'closed' ||
+    Number(latestConfig.configVersion || 1) !== resetVersion
+  ) {
+    throw new Error('Data suara sudah dibersihkan, tetapi konfigurasi berubah bersamaan. Periksa dashboard sebelum membuka pemilihan.');
+  }
+
+  const scheduledWrite = await configStore.setJSON('v2/main', {
+    ...latestConfig,
+    status: 'scheduled'
+  }, { onlyIfMatch: latestConfigEntry.etag });
+  if (!scheduledWrite.modified) {
+    throw new Error('Data suara sudah dibersihkan, tetapi status belum dapat dikembalikan ke BELUM DIMULAI. Muat ulang dashboard.');
+  }
+
   await writeAudit('election.reset_permanent', 'active-election', counts);
 
   return {
     ...counts,
-    message: 'Hasil pemilihan aktif dihapus permanen tanpa arsip. Akun pemilih, data calon, dan riwayat audit tetap dipertahankan.'
+    message: 'Seluruh hasil dan transaksi suara aktif dihapus permanen tanpa arsip. Akun pemilih, data calon, dan riwayat audit tetap dipertahankan.'
   };
 }
-
 async function migratePreviewNamespaceToProduction() {
   if (!isProductionDeploy()) throw new Error('Migrasi hanya dapat dijalankan pada deploy Production.');
   if (STORE_NAMESPACE !== 'preview') throw new Error('Namespace aktif bukan Preview. Migrasi tidak diperlukan atau sudah selesai.');
@@ -658,6 +707,7 @@ async function getAdminStats() {
       username: user.username,
       active: user.active !== false,
       hasVoted: done,
+      canDeleteVote: done && UUID_RE.test(String(participation?.ballotRef || '')),
       votePending: pending,
       votedAt: done ? participation.votedAt || null : null
     };

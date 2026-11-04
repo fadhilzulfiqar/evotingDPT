@@ -1198,17 +1198,57 @@ async function handleEvent(event) {
         consistency: 'strong'
       });
 
-      // A retry after a partially completed deletion can finish the cleanup.
-      if (!user && (lockEntry?.data?.state === 'deleting' || lockEntry?.data?.state === 'deleted')) {
+      let state = lockEntry?.data?.state || null;
+      let ballotRef = String(lockEntry?.data?.ballotRef || '');
+
+      // Older ballots were deliberately unlinked from voter identities.
+      // Do not delete an account and claim its vote was removed when that
+      // individual ballot cannot be identified safely.
+      if (state === 'done' && !UUID_RE.test(ballotRef)) {
+        return json(409, {
+          error: 'Akun ini sudah memilih sebelum fitur pencabutan suara tersedia. Surat suaranya masih anonim dan tidak dapat dihapus satu per satu. Tutup pemilihan lalu gunakan Reset hasil untuk menghapus seluruh suara.'
+        });
+      }
+
+      if (!user && state === 'deleted') {
+        return json(200, {
+          ok: true,
+          hadVoted: Boolean(lockEntry?.data?.hadVoted),
+          ballotDeleted: Boolean(lockEntry?.data?.ballotDeleted),
+          message: 'Akun sudah dihapus dan status penghapusan suara telah diselesaikan.'
+        });
+      }
+
+      // Recover an interrupted deletion. If the ballot reference was saved,
+      // retry its deletion before completing the account cleanup.
+      if (!user && (state === 'deleting' || state === 'done')) {
+        if (state === 'done' && !UUID_RE.test(ballotRef)) {
+          return json(409, { error: 'Akun sudah tidak ditemukan, tetapi suara versi lama tidak dapat diidentifikasi. Gunakan Reset hasil setelah pemilihan ditutup.' });
+        }
+        if (UUID_RE.test(ballotRef)) {
+          await votesStore.delete('v2/ballot/' + ballotRef);
+          const remainingBallot = await votesStore.get('v2/ballot/' + ballotRef, { type: 'json', consistency: 'strong' });
+          if (remainingBallot) return json(503, { error: 'Surat suara belum berhasil dihapus. Ulangi penghapusan akun.' });
+        }
         await votesStore.setJSON(participationKey, {
           state: 'deleted',
-          deletedAt: lockEntry.data.deletedAt || new Date().toISOString()
+          hadVoted: Boolean(ballotRef),
+          ballotDeleted: Boolean(ballotRef),
+          deletedAt: new Date().toISOString()
         });
-        return json(200, { ok: true, message: 'Akun sudah dihapus. Penanda pencegah pemungutan suara ulang tetap disimpan.' });
+        await writeAudit('voter.deleted', id, {
+          hadVoted: Boolean(ballotRef),
+          ballotDeleted: Boolean(ballotRef),
+          recoveredDeletion: true
+        }).catch(() => {});
+        return json(200, {
+          ok: true,
+          hadVoted: Boolean(ballotRef),
+          ballotDeleted: Boolean(ballotRef),
+          message: 'Penghapusan akun dan surat suara berhasil diselesaikan.'
+        });
       }
-      if (!user && lockEntry?.data?.state === 'done') {
-        return json(200, { ok: true, message: 'Akun login sudah dihapus. Surat suara dan penanda hak pilih tetap dipertahankan.' });
-      }
+
       if (!user) return json(404, { error: 'Pemilih tidak ditemukan.' });
 
       // Lock out the account immediately, including existing login sessions.
@@ -1230,94 +1270,116 @@ async function handleEvent(event) {
         type: 'json',
         consistency: 'strong'
       });
+      state = lockEntry?.data?.state || null;
+      ballotRef = String(lockEntry?.data?.ballotRef || '');
 
-      // A vote already in progress is allowed to finish, but the account is
-      // immediately inactive and all sessions have been revoked. The admin
-      // can permanently delete the login record after the transaction settles.
-      if (lockEntry?.data?.state === 'pending') {
+      // An in-flight vote is blocked from future logins immediately. The
+      // current request is allowed to settle; admin can retry deletion after.
+      if (state === 'pending') {
         await writeAudit('voter.locked_pending_delete', id, { username: user.username });
         return json(200, {
           ok: true,
           deferred: true,
-          message: 'Akun langsung dikunci. Transaksi suara yang sudah berjalan harus selesai sebelum data login dihapus.'
+          message: 'Akun langsung dikunci dan semua sesi dicabut. Transaksi suara sedang diselesaikan; ulangi penghapusan setelah statusnya selesai.'
         });
       }
 
       if (!lockEntry?.data) {
-        const claim = await votesStore.setJSON(participationKey, {
+        await votesStore.setJSON(participationKey, {
           state: 'deleting',
-          startedAt: new Date().toISOString()
+          startedAt: new Date().toISOString(),
+          deleteBallot: false
         }, { onlyIfNew: true });
-        if (!claim.modified) {
-          lockEntry = await votesStore.getWithMetadata(participationKey, {
-            type: 'json',
-            consistency: 'strong'
-          });
-        } else {
-          lockEntry = await votesStore.getWithMetadata(participationKey, {
-            type: 'json',
-            consistency: 'strong'
-          });
-        }
+        lockEntry = await votesStore.getWithMetadata(participationKey, {
+          type: 'json',
+          consistency: 'strong'
+        });
+        state = lockEntry?.data?.state || null;
+        ballotRef = String(lockEntry?.data?.ballotRef || '');
       }
 
-      if (lockEntry?.data?.state === 'pending') {
+      if (state === 'pending') {
         await writeAudit('voter.locked_pending_delete', id, { username: user.username });
         return json(200, {
           ok: true,
           deferred: true,
-          message: 'Akun langsung dikunci. Transaksi suara yang sudah berjalan harus selesai sebelum data login dihapus.'
+          message: 'Akun langsung dikunci dan semua sesi dicabut. Transaksi suara sedang diselesaikan; ulangi penghapusan setelah statusnya selesai.'
         });
       }
 
-      const state = lockEntry?.data?.state;
-      if (state !== 'done' && state !== 'deleting' && state !== 'deleted') {
-        return json(409, { error: 'Status hak pilih belum dapat dipastikan. Akun sudah dikunci; periksa kembali sebelum menghapus.' });
+      if (state === 'done') {
+        if (!UUID_RE.test(ballotRef)) {
+          return json(409, {
+            error: 'Suara akun ini berasal dari versi lama dan tidak memiliki ID penghubung. Tutup pemilihan lalu gunakan Reset hasil untuk menghapus seluruh suara.'
+          });
+        }
+        // Persist the deletion intent before removing the ballot so a retry
+        // can safely finish if the request is interrupted.
+        await votesStore.setJSON(participationKey, {
+          state: 'deleting',
+          ballotRef,
+          deleteBallot: true,
+          startedAt: new Date().toISOString()
+        });
+        lockEntry = await votesStore.getWithMetadata(participationKey, {
+          type: 'json',
+          consistency: 'strong'
+        });
+        state = lockEntry?.data?.state || null;
+        ballotRef = String(lockEntry?.data?.ballotRef || '');
+      }
+
+      const hadVoted = Boolean(lockEntry?.data?.deleteBallot && UUID_RE.test(ballotRef));
+      let ballotDeleted = false;
+
+      if (state === 'deleting' && lockEntry?.data?.deleteBallot) {
+        if (!UUID_RE.test(ballotRef)) {
+          return json(409, { error: 'ID surat suara tidak valid. Akun tetap dikunci; periksa audit sebelum melanjutkan.' });
+        }
+        await votesStore.delete('v2/ballot/' + ballotRef);
+        const remainingBallot = await votesStore.get('v2/ballot/' + ballotRef, {
+          type: 'json',
+          consistency: 'strong'
+        });
+        if (remainingBallot) {
+          return json(503, { error: 'Surat suara belum berhasil dihapus. Ulangi penghapusan akun.' });
+        }
+        ballotDeleted = true;
+      }
+
+      if (state !== 'deleting' && state !== 'deleted') {
+        return json(409, { error: 'Status hak pilih belum dapat dipastikan. Akun sudah dikunci; ulangi setelah memuat ulang dashboard.' });
       }
 
       const normalized = user.usernameNormalized || normalizeUsername(user.username);
       const mappingKey = 'username/' + normalized;
-      try {
-        const mapping = await usersStore.get(mappingKey, { type: 'json', consistency: 'strong' });
-        if (mapping?.id === id) await usersStore.delete(mappingKey);
-        await usersStore.delete('user/' + id);
+      const mapping = await usersStore.get(mappingKey, { type: 'json', consistency: 'strong' });
+      if (mapping?.id === id) await usersStore.delete(mappingKey);
+      await usersStore.delete('user/' + id);
 
-        // Keep a completed participation lock for voters who already voted.
-        // For unused accounts, keep a tombstone so an in-flight stale session
-        // cannot create a new vote after the account has been deleted.
-        if (state === 'deleting' || state === 'deleted') {
-          await votesStore.setJSON(participationKey, {
-            state: 'deleted',
-            deletedAt: new Date().toISOString()
-          });
-        }
+      // Keep a non-voting tombstone so a stale session cannot recreate a vote.
+      await votesStore.setJSON(participationKey, {
+        state: 'deleted',
+        hadVoted,
+        ballotDeleted,
+        deletedAt: new Date().toISOString()
+      });
 
-        await writeAudit('voter.deleted', id, {
-          username: user.username,
-          hadVoted: state === 'done',
-          ballotPreserved: state === 'done'
-        }).catch(() => {});
-        return json(200, {
-          ok: true,
-          deferred: false,
-          hadVoted: state === 'done',
-          message: state === 'done'
-            ? 'Akun login dihapus. Surat suara anonim dan penanda hak pilih tetap dipertahankan.'
-            : 'Akun pemilih dihapus. Penanda pencegah pemungutan suara ulang tetap disimpan.'
-        });
-      } catch (error) {
-        // If deletion was interrupted, keep the voter blocked. A retry can
-        // complete the account cleanup without allowing another ballot.
-        if (state === 'deleting') {
-          await votesStore.setJSON(participationKey, {
-            state: 'deleted',
-            deletedAt: new Date().toISOString()
-          }).catch(() => {});
-        }
-        throw error;
-      }
+      await writeAudit('voter.deleted', id, {
+        username: user.username,
+        hadVoted,
+        ballotDeleted
+      }).catch(() => {});
+
+      return json(200, {
+        ok: true,
+        hadVoted,
+        ballotDeleted,
+        message: ballotDeleted
+          ? 'Akun dihapus dan surat suara terkait dikeluarkan dari hasil pemilihan.'
+          : 'Akun pemilih dihapus. Tidak ada surat suara terkait yang perlu dihapus.'
+      });
     }
-
     if (method === 'POST' && route === '/admin/users/activate') {
       const body = parseBody(event);
       const id = String(body.id || '');

@@ -700,7 +700,8 @@ async function getAdminStats() {
 
   const safeUsers = users.map(user => {
     const participation = participationByUser.get(user.id);
-    const pending = participation?.state === 'pending' || participation?.state === 'deleting';
+    const pending = participation?.state === 'pending';
+    const deleting = participation?.state === 'deleting';
     const done = participation?.state === 'done';
     return {
       id: user.id,
@@ -710,13 +711,14 @@ async function getAdminStats() {
       hasVoted: done,
       canDeleteVote: done && UUID_RE.test(String(participation?.ballotRef || '')),
       votePending: pending,
+      voteDeleting: deleting,
       votedAt: done ? participation.votedAt || null : null
     };
   }).sort((a, b) => a.name.localeCompare(b.name, 'id'));
 
   const activeTotal = safeUsers.filter(user => user.active).length;
   const voted = safeUsers.filter(user => user.active && user.hasVoted).length;
-  const pending = safeUsers.filter(user => user.votePending).length;
+  const pending = safeUsers.filter(user => user.votePending || user.voteDeleting).length;
   const remaining = Math.max(0, activeTotal - voted);
 
   return {

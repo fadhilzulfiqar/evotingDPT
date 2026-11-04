@@ -6,7 +6,7 @@ on:
       - evotingdpt-fresh-project
   pull_request:
     branches:
-      - netlify-redesign
+      - evotingdpt-fresh-project
 
 jobs:
   syntax:
@@ -22,8 +22,6 @@ jobs:
         run: |
           node --check netlify/functions/api-v2.mjs
           node --check netlify/functions/api.mjs
-          node --check public/v2.js
-          node --check public/admin-v2.js
           node --check public/v2.js
           node --check public/admin-v2.js
           node --check scripts/load-test-v2.mjs

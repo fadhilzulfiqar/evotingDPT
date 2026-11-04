@@ -24,15 +24,17 @@ const DEFAULT_CONFIG = {
   }
 };
 
-const STORE_PREFIX = process.env.CONTEXT === 'production' ? '' : 'v2-preview-';
+const STORE_PREFIX = process.env.CONTEXT === 'production'
+  ? 'evotingdpt-fresh-prod-'
+  : 'evotingdpt-fresh-preview-';
 const storeName = name => STORE_PREFIX + name;
 const stores = {
-  config: () => getStore(storeName('evoting-config')),
-  users: () => getStore(storeName('evoting-users')),
-  votes: () => getStore(storeName('evoting-votes')),
-  admins: () => getStore(storeName('evoting-admins')),
-  sessions: () => getStore(storeName('evoting-sessions')),
-  legacyArchive: () => getStore(storeName('evoting-legacy-archive'))
+  config: () => getStore(storeName('config')),
+  users: () => getStore(storeName('users')),
+  votes: () => getStore(storeName('votes')),
+  admins: () => getStore(storeName('admins')),
+  sessions: () => getStore(storeName('sessions')),
+  legacyArchive: () => getStore(storeName('archive'))
 };
 
 function json(statusCode, body, extraHeaders = {}) {
@@ -109,16 +111,10 @@ async function verifyAdminPassword(password, admin) {
     submitted.normalize('NFC'),
     submitted.trim().normalize('NFC')
   ])];
-
   for (const attempt of attempts) {
     if (await verifyPassword(attempt, admin?.passwordHash)) return true;
   }
-
-  const configured = configuredAdminBootstrapPasswords();
-  return configured.some(candidate => {
-    const accepted = [candidate, candidate.trim(), candidate.normalize('NFC'), candidate.trim().normalize('NFC')];
-    return attempts.some(attempt => accepted.some(value => timingSafeTextEqual(attempt, value)));
-  });
+  return false;
 }
 
 function getCookie(event, name) {
@@ -424,34 +420,20 @@ async function archiveAndResetElection() {
 async function ensureAdmin() {
   const store = stores.admins();
   let admin = await store.get('main', { type: 'json', consistency: 'strong' });
-  const bootstrap = configuredAdminBootstrapPasswords()[0] || '';
-  if (bootstrap.length < 8) {
-    if (admin) return admin;
-    throw new Error('ADMIN_BOOTSTRAP_PASSWORD belum diatur atau kurang dari 8 karakter.');
-  }
-  const fingerprint = crypto.createHash('sha256').update(bootstrap).digest('hex');
-  if (!admin) {
-    const seed = {
-      username: 'admin_dpt',
-      passwordHash: await hashPassword(bootstrap),
-      bootstrapFingerprint: fingerprint,
-      updatedAt: new Date().toISOString()
-    };
-    const result = await store.setJSON('main', seed, { onlyIfNew: true });
-    if (result.modified) return seed;
-    admin = await store.get('main', { type: 'json', consistency: 'strong' });
-  }
-  if (admin && admin.bootstrapFingerprint !== fingerprint) {
-    admin = {
-      ...admin,
-      username: 'admin_dpt',
-      passwordHash: await hashPassword(bootstrap),
-      bootstrapFingerprint: fingerprint,
-      updatedAt: new Date().toISOString()
-    };
-    await store.setJSON('main', admin);
-  }
-  return admin;
+  if (admin) return admin;
+
+  const bootstrap = String(process.env.ADMIN_BOOTSTRAP_PASSWORD || '');
+  if (bootstrap.length < 12) return null;
+
+  const seed = {
+    username: 'admin_dpt',
+    passwordHash: await hashPassword(bootstrap),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  const result = await store.setJSON('main', seed, { onlyIfNew: true });
+  if (result.modified) return seed;
+  return await store.get('main', { type: 'json', consistency: 'strong' });
 }
 
 async function getUserById(id) {
@@ -835,11 +817,41 @@ async function handleEvent(event) {
       });
     }
 
+    if (method === 'GET' && route === '/admin/setup-status') {
+      const admin = await stores.admins().get('main', { type: 'json', consistency: 'strong' });
+      return json(200, {
+        setupRequired: !admin,
+        bootstrapConfigured: String(process.env.ADMIN_BOOTSTRAP_PASSWORD || '').length >= 12
+      });
+    }
+
+    if (method === 'POST' && route === '/admin/recover') {
+      const body = parseBody(event);
+      const bootstrap = String(process.env.ADMIN_BOOTSTRAP_PASSWORD || '');
+      if (!bootstrap || !timingSafeTextEqual(body.bootstrapPassword, bootstrap)) {
+        return json(403, { error: 'Kode pemulihan admin tidak cocok.' });
+      }
+      const newPassword = String(body.newPassword || '');
+      if (newPassword.length < 12) return json(400, { error: 'Password baru minimal 12 karakter.' });
+      const admin = await stores.admins().get('main', { type: 'json', consistency: 'strong' });
+      const next = {
+        username: admin?.username || 'admin_dpt',
+        passwordHash: await hashPassword(newPassword),
+        createdAt: admin?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      await stores.admins().setJSON('main', next);
+      await writeAudit('admin.password_recovered', 'admin', {});
+      await destroySession(event);
+      return json(200, { ok: true }, { 'set-cookie': sessionCookie(event, '', 0) });
+    }
+
     if (method === 'POST' && route === '/admin/login') {
       const body = parseBody(event);
       const admin = await ensureAdmin();
-      if (!admin || normalizeUsername(body.username) !== normalizeUsername(admin.username) || !(await verifyAdminPassword(body.password, admin))) {
-        return json(401, { error: 'Username atau password admin tidak cocok. Periksa kembali username dan password yang tersimpan di Netlify.' });
+      if (!admin) return json(503, { error: 'Akun admin belum disiapkan. Periksa ADMIN_BOOTSTRAP_PASSWORD pada Environment variables Netlify.' });
+      if (normalizeUsername(body.username) !== normalizeUsername(admin.username) || !(await verifyAdminPassword(body.password, admin))) {
+        return json(401, { error: 'Username atau password admin tidak cocok.' });
       }
       const cookie = await createSession(event, 'admin', 'admin');
       return json(200, { ok: true }, { 'set-cookie': cookie });
@@ -1035,7 +1047,7 @@ async function handleEvent(event) {
       const admin = await ensureAdmin();
       const oldPassword = String(body.oldPassword || '');
       const newPassword = String(body.newPassword || '');
-      if (!(await verifyAdminPassword(oldPassword, admin))) return json(403, { error: 'Password admin lama salah.' });
+      if (!admin || !(await verifyPassword(oldPassword, admin.passwordHash))) return json(403, { error: 'Password admin lama salah.' });
       if (newPassword.length < 8) return json(400, { error: 'Password admin baru minimal 8 karakter.' });
       const next = { ...admin, passwordHash: await hashPassword(newPassword), updatedAt: new Date().toISOString() };
       await stores.admins().setJSON('main', next);

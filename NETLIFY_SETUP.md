@@ -49,4 +49,4 @@ Setiap pemilih mengirim satu pilihan Ketua dan satu pilihan Wakil dalam satu req
 
 ## 7. Batasan teknis
 
-Netlify Blobs adalah object storage, bukan database relasional dengan transaksi multi-record. Conditional writes digunakan untuk mengklaim hak pilih per akun dan mengurangi risiko duplikasi. Pengujian beban pada deployment aktual tetap wajib, terutama untuk pengiriman serentak.
+API v2 menggunakan Netlify Functions 2.0 agar konteks Netlify Blobs disediakan oleh runtime. Netlify Blobs adalah object storage, bukan database relasional dengan transaksi multi-record. Conditional writes digunakan untuk mengklaim hak pilih per akun dan mengurangi risiko duplikasi. Pengujian beban pada deployment aktual tetap wajib, terutama untuk pengiriman serentak.

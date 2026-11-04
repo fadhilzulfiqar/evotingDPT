@@ -47,7 +47,7 @@ VU_COUNT=100 \
 node scripts/load-test-v2.mjs
 ```
 
-Script membuat 101 akun: 100 pemilih utama dan satu akun khusus untuk menguji dua request yang datang bersamaan. Script menguji:
+Script membuat 100 akun: 99 pemilih utama dan satu akun khusus untuk menguji dua request yang datang bersamaan. Script menguji:
 - 100 login dan pengiriman surat suara secara paralel.
 - Satu akun yang mengirim dua request berbeda secara bersamaan: tepat satu diterima.
 - Retry dengan idempotency key dan pilihan yang sama.

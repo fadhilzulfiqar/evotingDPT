@@ -271,9 +271,9 @@ async function setControlStatus(status, client = pool, configVersion = 1) {
   );
 }
 
-async function writeAudit(action, targetId = null, details = {}) {
+async function writeAudit(action, targetId = null, details = {}, client = pool) {
   await ensureSchema();
-  await pool.query(
+  await client.query(
     'INSERT INTO evoting_v2_admin_audit (election_id, actor, action, target_id, details) VALUES ($1,$2,$3,$4,$5::jsonb)',
     [ELECTION_ID, 'admin', action, targetId, JSON.stringify(details)]
   );
@@ -1052,6 +1052,7 @@ async function handleEvent(event) {
           'UPDATE evoting_v2_election_control SET status=$1,updated_at=NOW() WHERE election_id=$2',
           ['scheduled', ELECTION_ID]
         );
+        await writeAudit('election.reset_archived', archiveId, {}, client);
         await client.query('COMMIT');
       } catch (error) {
         await client.query('ROLLBACK').catch(() => {});
@@ -1061,7 +1062,6 @@ async function handleEvent(event) {
       }
       const config = await getV2Config();
       await stores.config().setJSON('v2/main', { ...config, status: 'scheduled' });
-      await writeAudit('election.reset_archived', archiveId, {});
       return json(200, { ok: true, archiveId, message: 'Data pemilihan v2 diarsipkan dan direset. Akun pemilih tetap tersimpan.' });
     }
 

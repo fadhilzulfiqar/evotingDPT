@@ -4,7 +4,7 @@ import { performance } from 'node:perf_hooks';
 const baseUrl = String(process.env.BASE_URL || '').replace(/\/$/, '');
 const adminUsername = process.env.ADMIN_USERNAME || 'admin_dpt';
 const adminPassword = process.env.ADMIN_PASSWORD || '';
-const count = Math.max(1, Math.min(100, Number(process.env.VU_COUNT || 100)));
+const count = Math.max(2, Math.min(100, Number(process.env.VU_COUNT || 100)));
 const prefix = process.env.LOAD_TEST_PREFIX || ('lt' + Date.now().toString(36).slice(-6));
 
 if (!baseUrl || !adminPassword) {
@@ -76,8 +76,8 @@ try {
     throw new Error('Close the staging election first. The test creates accounts before opening it.');
   }
 
-  const rows = Array.from({ length: count + 1 }, (_, index) => ({
-    name: index === count ? 'Load Test Race Voter' : 'Load Test Voter ' + String(index + 1).padStart(3, '0'),
+  const rows = Array.from({ length: count }, (_, index) => ({
+    name: index === count - 1 ? 'Load Test Race Voter' : 'Load Test Voter ' + String(index + 1).padStart(3, '0'),
     username: prefix + String(index + 1).padStart(3, '0'),
     password: crypto.randomBytes(8).toString('hex')
   }));
@@ -130,25 +130,25 @@ try {
   }
 
   const voteStarted = performance.now();
-  const mainSessions = sessions.slice(0, count);
+  const mainSessions = sessions.slice(0, count - 1);
   const mainBallots = mainSessions.map((session, index) => ({
     session,
     chair: index % 2 ? 'K01' : 'K02',
     vice: index % 2 ? 'W02' : 'W01',
     key: crypto.randomUUID()
   }));
-  const submissions = await Promise.all(mainBallots.map(ballot =>
-    cast(ballot.session, ballot.chair, ballot.vice, ballot.key)
-  ));
+  const raceSession = sessions[count - 1];
+  const raceKeys = [crypto.randomUUID(), crypto.randomUUID()];
+  const simultaneousResults = await Promise.all([
+    ...mainBallots.map(ballot => cast(ballot.session, ballot.chair, ballot.vice, ballot.key)),
+    cast(raceSession, 'K01', 'W01', raceKeys[0]),
+    cast(raceSession, 'K02', 'W02', raceKeys[1])
+  ]);
   const voteMs = Math.round(performance.now() - voteStarted);
+  const submissions = simultaneousResults.slice(0, mainBallots.length);
+  const raceStarted = simultaneousResults.slice(mainBallots.length);
   const successfulBallots = submissions.filter(result => result.status === 200).length;
   const failedBallots = submissions.filter(result => result.status !== 200);
-
-  const raceSession = sessions[count];
-  const raceStarted = await Promise.all([
-    cast(raceSession, 'K01', 'W01', crypto.randomUUID()),
-    cast(raceSession, 'K02', 'W02', crypto.randomUUID())
-  ]);
   const raceSuccesses = raceStarted.filter(result => result.status === 200).length;
   const raceConflicts = raceStarted.filter(result => result.status === 409).length;
   const concurrentDuplicateGuardPassed = raceSuccesses === 1 && raceConflicts === 1;
@@ -172,7 +172,7 @@ try {
   const afterResponse = await request('/api/v2/admin/stats', { headers: { cookie: adminCookie } });
   const afterStats = await readJson(afterResponse);
   if (!afterResponse.ok) throw new Error('Could not read post-test admin statistics.');
-  const expectedNewBallots = count + 1;
+  const expectedNewBallots = count;
   const expectedTotal = baselineVoted + expectedNewBallots;
   const chairTotal = Object.values(afterStats.chairCounts || {}).reduce((sum, value) => sum + Number(value || 0), 0);
   const viceTotal = Object.values(afterStats.viceCounts || {}).reduce((sum, value) => sum + Number(value || 0), 0);
@@ -207,7 +207,7 @@ try {
   };
   console.log(JSON.stringify(report, null, 2));
 
-  if (successfulBallots !== count || !concurrentDuplicateGuardPassed || !sameRequestRetryPassed
+  if (successfulBallots !== count - 1 || !concurrentDuplicateGuardPassed || !sameRequestRetryPassed
       || !conflictingRetryBlocked || !secondVoteBlocked || !reconciled) {
     process.exitCode = 1;
   }

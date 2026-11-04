@@ -1086,7 +1086,13 @@ async function handleEvent(event) {
       const newPassword = String(body.newPassword || '');
       if (!(await verifyPassword(oldPassword, admin.passwordHash))) return json(403, { error: 'Password admin lama salah.' });
       if (newPassword.length < 8) return json(400, { error: 'Password admin baru minimal 8 karakter.' });
-      const next = { ...admin, passwordHash: await hashPassword(newPassword), updatedAt: new Date().toISOString() };
+      const bootstrap = String(process.env.ADMIN_BOOTSTRAP_PASSWORD || process.env.admin_dpt || process.env.ADMIN_DPT || '');
+      const next = {
+        ...admin,
+        passwordHash: await hashPassword(newPassword),
+        bootstrapFingerprint: bootstrap.length >= 8 ? crypto.createHash('sha256').update(bootstrap).digest('hex') : admin.bootstrapFingerprint,
+        updatedAt: new Date().toISOString()
+      };
       await stores.admins().setJSON('main', next);
       if (pool) await writeAudit('admin.password_changed', 'admin', {});
       await destroySession(event);

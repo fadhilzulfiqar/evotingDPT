@@ -84,6 +84,28 @@ async function verifyPassword(password, stored) {
   }
 }
 
+// Support both the canonical Netlify variable and the legacy mixed-case
+// AdminDPT variable. Netlify environment variable names are case-sensitive.
+function configuredAdminBootstrapPasswords() {
+  return [...new Set([
+    process.env.ADMIN_BOOTSTRAP_PASSWORD,
+    process.env.AdminDPT,
+    process.env.admin_dpt,
+    process.env.ADMIN_DPT
+  ].map(value => String(value || '')).filter(value => value.length >= 8))];
+}
+
+function timingSafeTextEqual(left, right) {
+  const a = Buffer.from(String(left || ''), 'utf8');
+  const b = Buffer.from(String(right || ''), 'utf8');
+  return a.length > 0 && a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+async function verifyAdminPassword(password, admin) {
+  if (await verifyPassword(password, admin?.passwordHash)) return true;
+  return configuredAdminBootstrapPasswords().some(candidate => timingSafeTextEqual(password, candidate));
+}
+
 function getCookie(event, name) {
   const cookie = event.headers?.cookie || event.headers?.Cookie || '';
   for (const part of cookie.split(';')) {
@@ -387,7 +409,7 @@ async function archiveAndResetElection() {
 async function ensureAdmin() {
   const store = stores.admins();
   let admin = await store.get('main', { type: 'json', consistency: 'strong' });
-  const bootstrap = String(process.env.ADMIN_BOOTSTRAP_PASSWORD || process.env.admin_dpt || process.env.ADMIN_DPT || '');
+  const bootstrap = configuredAdminBootstrapPasswords()[0] || '';
   if (bootstrap.length < 8) {
     if (admin) return admin;
     throw new Error('ADMIN_BOOTSTRAP_PASSWORD belum diatur atau kurang dari 8 karakter.');
@@ -801,7 +823,7 @@ async function handleEvent(event) {
     if (method === 'POST' && route === '/admin/login') {
       const body = parseBody(event);
       const admin = await ensureAdmin();
-      if (!admin || String(body.username || '') !== admin.username || !(await verifyPassword(body.password, admin.passwordHash))) {
+      if (!admin || String(body.username || '') !== admin.username || !(await verifyAdminPassword(body.password, admin))) {
         return json(401, { error: 'Username atau password admin salah.' });
       }
       const cookie = await createSession(event, 'admin', 'admin');
@@ -998,7 +1020,7 @@ async function handleEvent(event) {
       const admin = await ensureAdmin();
       const oldPassword = String(body.oldPassword || '');
       const newPassword = String(body.newPassword || '');
-      if (!(await verifyPassword(oldPassword, admin.passwordHash))) return json(403, { error: 'Password admin lama salah.' });
+      if (!(await verifyAdminPassword(oldPassword, admin))) return json(403, { error: 'Password admin lama salah.' });
       if (newPassword.length < 8) return json(400, { error: 'Password admin baru minimal 8 karakter.' });
       const next = { ...admin, passwordHash: await hashPassword(newPassword), updatedAt: new Date().toISOString() };
       await stores.admins().setJSON('main', next);

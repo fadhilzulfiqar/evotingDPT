@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server-online.js",
     "start:local": "node server.js",
-    "test:load:v2": "node scripts/load-test-v2.mjs"
+    "test:load:v2": "node scripts/load-test-v2.mjs",
+    "test:v2": "node scripts/validate-v2-invariants.mjs"
   },
   "engines": {
     "node": ">=20"

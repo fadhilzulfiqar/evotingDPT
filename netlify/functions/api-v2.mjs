@@ -417,26 +417,47 @@ async function archiveAndResetElection() {
   };
 }
 
-async function ensureAdmin(initialPassword = '') {
+async function ensureAdmin() {
   const store = stores.admins();
   let admin = await store.get('main', { type: 'json', consistency: 'strong' });
-  if (admin) return admin;
+  const bootstrap = configuredAdminBootstrapPasswords()[0] || '';
 
-  // Initialize the first admin only when the submitted password matches one
-  // of the configured bootstrap secrets, including legacy Netlify variable names.
-  const bootstrap = configuredAdminBootstrapPasswords()
-    .find(value => timingSafeTextEqual(initialPassword, value));
-  if (!bootstrap) return null;
+  // Preserve the proven legacy behavior: the Netlify bootstrap password is
+  // the source of truth for first-time setup and deliberate password rotation.
+  if (bootstrap.length < 8) {
+    if (admin) return admin;
+    return null;
+  }
 
-  const seed = {
-    username: 'admin_dpt',
-    passwordHash: await hashPassword(bootstrap),
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
-  const result = await store.setJSON('main', seed, { onlyIfNew: true });
-  if (result.modified) return seed;
-  return await store.get('main', { type: 'json', consistency: 'strong' });
+  const bootstrapFingerprint = crypto.createHash('sha256').update(bootstrap).digest('hex');
+
+  if (!admin) {
+    const seed = {
+      username: 'admin_dpt',
+      passwordHash: await hashPassword(bootstrap),
+      bootstrapFingerprint,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    const result = await store.setJSON('main', seed, { onlyIfNew: true });
+    if (result.modified) return seed;
+    admin = await store.get('main', { type: 'json', consistency: 'strong' });
+  }
+
+  // If the Netlify variable was changed, rotate the admin password exactly
+  // as the previous working application did. Existing user/vote stores are untouched.
+  if (admin && admin.bootstrapFingerprint !== bootstrapFingerprint) {
+    admin = {
+      ...admin,
+      username: 'admin_dpt',
+      passwordHash: await hashPassword(bootstrap),
+      bootstrapFingerprint,
+      updatedAt: new Date().toISOString()
+    };
+    await store.setJSON('main', admin);
+  }
+
+  return admin;
 }
 
 async function getUserById(id) {
@@ -837,9 +858,13 @@ async function handleEvent(event) {
       const newPassword = String(body.newPassword || '');
       if (newPassword.length < 12) return json(400, { error: 'Password baru minimal 12 karakter.' });
       const admin = await stores.admins().get('main', { type: 'json', consistency: 'strong' });
+      const bootstrap = configuredAdminBootstrapPasswords()[0] || '';
       const next = {
         username: admin?.username || 'admin_dpt',
         passwordHash: await hashPassword(newPassword),
+        bootstrapFingerprint: bootstrap.length >= 8
+          ? crypto.createHash('sha256').update(bootstrap).digest('hex')
+          : admin?.bootstrapFingerprint || '',
         createdAt: admin?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
@@ -851,12 +876,9 @@ async function handleEvent(event) {
 
     if (method === 'POST' && route === '/admin/login') {
       const body = parseBody(event);
-      const admin = await ensureAdmin(body.password);
+      const admin = await ensureAdmin();
       if (!admin) {
-        if (!configuredAdminBootstrapPasswords().length) {
-          return json(503, { error: 'Akun admin belum disiapkan. Atur password bootstrap pada Environment variables Netlify.' });
-        }
-        return json(401, { error: 'Username atau password admin tidak cocok.' });
+        return json(503, { error: 'Akun admin belum disiapkan. Periksa ADMIN_BOOTSTRAP_PASSWORD pada Environment variables Netlify.' });
       }
       if (normalizeUsername(body.username) !== normalizeUsername(admin.username) || !(await verifyAdminPassword(body.password, admin))) {
         return json(401, { error: 'Username atau password admin tidak cocok.' });

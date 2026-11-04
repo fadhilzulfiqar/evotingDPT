@@ -86,17 +86,19 @@
         : user.votePending ? '<span class="status-pill pending">SEDANG DIPROSES</span>'
         : user.hasVoted ? '<span class="status-pill done">SUDAH MEMILIH</span>'
         : '<span class="status-pill pending">BELUM MEMILIH</span>';
+      const canDelete = !user.votePending && !user.hasVoted;
+      const deleteButton = canDelete ? '<button class="small-button warn" type="button" data-action="delete" data-id="' + esc(user.id) + '">Hapus</button>' : '';
       const actions = user.active
         ? '<button class="small-button" type="button" data-action="edit" data-id="' + esc(user.id) + '">Edit</button> ' +
-          (user.votePending ? '<span class="inline-note">Menunggu penyelesaian</span>' : user.hasVoted ? '<span class="inline-note">Hak suara digunakan</span>' : '<button class="small-button warn" type="button" data-action="deactivate" data-id="' + esc(user.id) + '">Nonaktifkan</button>')
-        : '<button class="small-button" type="button" data-action="activate" data-id="' + esc(user.id) + '">Aktifkan kembali</button>';
+          (user.votePending ? '<span class="inline-note">Menunggu penyelesaian</span>' : user.hasVoted ? '<span class="inline-note">Hak suara digunakan</span>' : '<button class="small-button warn" type="button" data-action="deactivate" data-id="' + esc(user.id) + '">Nonaktifkan</button> ') + deleteButton
+        : '<button class="small-button" type="button" data-action="activate" data-id="' + esc(user.id) + '">Aktifkan kembali</button> ' + deleteButton;
       html += '<tr><td>' + (index + 1) + '</td><td>' + esc(user.name) + '</td><td>' + esc(user.username) + '</td><td>' + state + '</td><td>' + (user.votedAt ? esc(new Date(user.votedAt).toLocaleString('id-ID')) : '—') + '</td><td>' + actions + '</td></tr>';
     });
     $('#voterRows').innerHTML = html || '<tr><td colspan="6">Tidak ada data pemilih.</td></tr>';
   }
 
   function renderVoters() {
-    let html = heading('MANAJEMEN PEMILIH', 'Data pemilih', 'Tambah, impor, edit, dan nonaktifkan akun. Status partisipasi dapat dipantau tanpa membuka pilihan suara.');
+    let html = heading('MANAJEMEN PEMILIH', 'Data pemilih', 'Akun dapat ditambahkan saat pemilihan berlangsung. Akun yang belum memilih dapat dinonaktifkan atau dihapus; akun yang sudah memilih dilindungi.');
     html += '<div class="admin-content-grid"><section class="admin-panel"><div class="eyebrow">TAMBAH AKUN</div><h2>Pemilih baru</h2><div class="admin-form-grid"><label class="full">Nama lengkap<input id="newName" placeholder="Nama pemilih"></label><label>Username<input id="newUsername" placeholder="Username"></label><label>Password<input id="newPassword" type="text" placeholder="Password"></label></div><div class="admin-actions"><button class="small-button gold" type="button" onclick="window.EvotingAdmin.addVoter()">Tambah akun</button></div></section>';
     html += '<section class="admin-panel"><div class="eyebrow">IMPOR MASSAL</div><h2>Daftar pemilih</h2><p>Format per baris: Nama | Username | Password</p><textarea id="bulkRows" class="admin-input" rows="6" placeholder="Nama Pemilih | 23123456 | DPT-A7K92"></textarea><div class="admin-actions"><button class="small-button" type="button" onclick="window.EvotingAdmin.bulkImport()">Impor daftar</button></div></section></div>';
     html += '<section class="admin-panel"><div class="panel-heading"><div><div class="eyebrow">STATUS PARTISIPASI</div><h2>Daftar akun dan status pemilihan</h2></div><input id="voterSearch" class="search-box" placeholder="Cari nama atau username..." oninput="window.EvotingAdmin.filterVoters()"></div>';
@@ -109,6 +111,7 @@
       if (button.dataset.action === 'edit') editUser(id);
       else if (button.dataset.action === 'deactivate') deactivateUser(id);
       else if (button.dataset.action === 'activate') activateUser(id);
+      else if (button.dataset.action === 'delete') deleteVoter(id);
     });
     renderVoterRows();
   }
@@ -153,8 +156,9 @@
   function renderSettings() {
     let html = heading('PENGATURAN SISTEM', 'Keamanan dan reset', 'Atur kredensial admin dan kelola hasil pemilihan.');
     html += '<section class="admin-panel"><div class="eyebrow">KREDENSIAL ADMIN</div><h2>Ganti password admin</h2><div class="admin-form-grid"><label>Password saat ini<input id="oldAdminPassword" type="password" autocomplete="current-password"></label><label>Password baru<input id="newAdminPassword" type="password" autocomplete="new-password" minlength="12"></label></div><div class="admin-actions"><button class="small-button gold" type="button" onclick="window.EvotingAdmin.changePassword()">Ganti password</button></div><p class="inline-note">Gunakan password minimal 12 karakter. Kode bootstrap dapat digunakan untuk pemulihan jika password admin terlupa.</p></section>';
-    const canReset = stats.deployContext === 'production';
-    html += '<section class="admin-panel"><div class="eyebrow">RESET PEMILIHAN</div><h2>Reset hasil pemilihan</h2><p>Reset menghapus permanen surat suara dan status partisipasi aktif tanpa membuat arsip. Seluruh akun pemilih, data calon, dan riwayat audit tetap dipertahankan. Pemilihan harus ditutup dan tidak boleh ada transaksi suara tertunda.</p><p class="inline-note">Deploy context: <b>' + esc(stats.deployContext || 'belum diatur') + '</b> · Penyimpanan aktif: <b>' + esc(stats.storageNamespace || 'preview') + '</b></p><div class="admin-actions"><button class="small-button warn" type="button" ' + (canReset ? '' : 'disabled') + ' onclick="window.EvotingAdmin.resetElection()">' + (canReset ? 'Reset hasil pemilihan' : 'Reset hanya tersedia di Production') + '</button></div></section>';
+    const canReset = stats.deployContext === 'production' && stats.config.status === 'closed' && Number(stats.pending || 0) === 0;
+    const resetLabel = stats.deployContext !== 'production' ? 'Reset hanya tersedia di Production' : stats.config.status !== 'closed' ? 'Tutup pemilihan untuk reset' : Number(stats.pending || 0) > 0 ? 'Selesaikan transaksi tertunda' : 'Reset hasil pemilihan';
+    html += '<section class="admin-panel"><div class="eyebrow">RESET PEMILIHAN</div><h2>Reset hasil pemilihan</h2><p>Reset menghapus permanen surat suara dan status partisipasi aktif tanpa membuat arsip. Jumlah akun aktif dan pemilih yang belum memilih tidak menghalangi reset. Seluruh akun pemilih, data calon, dan riwayat audit tetap dipertahankan. Syaratnya pemilihan berstatus DITUTUP dan tidak ada transaksi suara tertunda.</p><p class="inline-note">Deploy context: <b>' + esc(stats.deployContext || 'belum diatur') + '</b> · Penyimpanan aktif: <b>' + esc(stats.storageNamespace || 'preview') + '</b></p><div class="admin-actions"><button class="small-button warn" type="button" ' + (canReset ? '' : 'disabled') + ' onclick="window.EvotingAdmin.resetElection()">' + resetLabel + '</button></div></section>';
     html += '<section class="admin-panel"><div class="eyebrow">INFRASTRUKTUR</div><h2>Penyimpanan aplikasi</h2><p>Platform: <b>Netlify Functions 2.0</b><br>Object storage: <b>Netlify Blobs</b><br>Deploy context: <b>' + esc(stats.deployContext || 'belum diatur') + '</b><br>Namespace data: <b>' + esc(stats.storageNamespace || 'preview') + '</b><br>Skema suara: <b>surat suara anonim dan status partisipasi terpisah</b></p><div class="notice-error">Reset hanya menghapus surat suara aktif dan status partisipasi. Akun pemilih serta konfigurasi calon tidak dihapus.</div></section>';
     $('#adminContent').innerHTML = html;
   }
@@ -283,6 +287,18 @@
     catch (error) { feedback(error.message); }
   }
 
+  async function deleteVoter(id) {
+    const user = stats.users.find(item => item.id === id);
+    if (!user || user.hasVoted || user.votePending) return feedback('Akun yang sudah memilih atau sedang memproses suara tidak dapat dihapus.');
+    if (!confirm('Hapus permanen akun ' + user.name + ' (' + user.username + ')? Tindakan ini hanya tersedia untuk akun yang belum memilih. Akun dan sesi login akan dihapus, sedangkan riwayat audit tetap disimpan.')) return;
+    try {
+      await api('/admin/users/delete', { method:'POST', body:JSON.stringify({id}) });
+      await loadStats();
+      renderTab('voters');
+      feedback('Akun pemilih berhasil dihapus permanen.', 'success');
+    } catch (error) { feedback(error.message); }
+  }
+
   async function archiveLegacy() {
     if (!confirm('Buat salinan arsip privat dari data trial lama? Data sumber tidak akan dihapus. Pada deploy preview, fitur ini memang dinonaktifkan.')) return;
     try {
@@ -303,7 +319,7 @@
 
   async function resetElection() {
     if (stats.deployContext !== 'production') return feedback('Reset hanya tersedia pada website Production.');
-    if (stats.config.status === 'open' || stats.config.status === 'closing') return feedback('Tutup pemilihan terlebih dahulu sebelum reset.');
+    if (stats.config.status !== 'closed') return feedback('Pemilihan harus berstatus DITUTUP sebelum reset.');
     if (Number(stats.pending || 0) > 0) return feedback('Masih ada transaksi suara tertunda. Selesaikan terlebih dahulu sebelum reset.');
     if (!confirm('RESET PERMANEN: semua surat suara aktif dan status partisipasi akan dihapus tanpa arsip. Akun pemilih, data calon, dan riwayat audit tetap dipertahankan. Tindakan ini tidak dapat dibatalkan. Lanjutkan?')) return;
     try {
@@ -392,6 +408,6 @@
     loadStats().catch(() => {});
   }
 
-  window.EvotingAdmin = {openTab:renderTab,saveConfig,pickPhoto,addVoter,bulkImport,editUser,deactivateUser,activateUser,archiveLegacy,migrateProductionData,resetElection,changePassword,exportCsv,filterVoters:renderVoterRows};
+  window.EvotingAdmin = {openTab:renderTab,saveConfig,pickPhoto,addVoter,bulkImport,editUser,deactivateUser,activateUser,deleteVoter,archiveLegacy,migrateProductionData,resetElection,changePassword,exportCsv,filterVoters:renderVoterRows};
   init();
 })();

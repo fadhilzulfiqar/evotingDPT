@@ -55,7 +55,7 @@ Script membuat 100 akun: 99 pemilih utama dan satu akun khusus untuk menguji dua
 - Percobaan suara kedua pada akun yang telah memilih harus ditolak.
 - Rekonsiliasi total surat suara Ketua, Wakil, dan jumlah partisipasi.
 
-Script otomatis menutup pemilihan staging setelah tes. Akun uji tetap tersimpan; gunakan prefix baru untuk pengujian berikutnya atau arsipkan dan reset data V2 sesuai prosedur.
+Script mensyaratkan database staging kosong dan rekonsiliasi awal valid. Setelah mengukur hasil, script otomatis menutup pemilihan, menyimpan surat suara dan partisipasi ke tabel arsip V2 melalui reset, lalu menonaktifkan 100 akun sementara. Akun tidak dihapus permanen; statusnya tercatat untuk audit.
 
 Untuk keamanan, script hanya menerima host Netlify Deploy Preview secara default. Untuk host staging khusus yang telah diverifikasi bukan production, set `ALLOW_NON_PREVIEW_STAGING=true`. Jangan jalankan script terhadap `evotedpt.netlify.app` atau domain production lainnya.
 

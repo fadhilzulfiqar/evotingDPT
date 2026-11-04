@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - evotingdpt-fresh-project
+      - netlify-redesign
   pull_request:
     branches:
       - evotingdpt-fresh-project
+      - netlify-redesign
 
 jobs:
   syntax:

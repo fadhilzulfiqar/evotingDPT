@@ -420,20 +420,44 @@ async function archiveAndResetElection() {
 async function ensureAdmin() {
   const store = stores.admins();
   let admin = await store.get('main', { type: 'json', consistency: 'strong' });
-  if (admin) return admin;
+  const bootstrap = configuredAdminBootstrapPasswords()[0] || '';
 
-  const bootstrap = String(process.env.ADMIN_BOOTSTRAP_PASSWORD || '');
-  if (bootstrap.length < 12) return null;
+  // Restore the proven legacy behavior: Netlify bootstrap is the source of
+  // truth for first-time setup and deliberate password rotation.
+  if (bootstrap.length < 8) {
+    if (admin) return admin;
+    return null;
+  }
 
-  const seed = {
-    username: 'admin_dpt',
-    passwordHash: await hashPassword(bootstrap),
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
-  const result = await store.setJSON('main', seed, { onlyIfNew: true });
-  if (result.modified) return seed;
-  return await store.get('main', { type: 'json', consistency: 'strong' });
+  const bootstrapFingerprint = crypto.createHash('sha256').update(bootstrap).digest('hex');
+
+  if (!admin) {
+    const seed = {
+      username: 'admin_dpt',
+      passwordHash: await hashPassword(bootstrap),
+      bootstrapFingerprint,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    const result = await store.setJSON('main', seed, { onlyIfNew: true });
+    if (result.modified) return seed;
+    admin = await store.get('main', { type: 'json', consistency: 'strong' });
+  }
+
+  // Rotate the password when the Netlify bootstrap value changes, as in the
+  // previous working application. Voter, ballot and election stores are untouched.
+  if (admin && admin.bootstrapFingerprint !== bootstrapFingerprint) {
+    admin = {
+      ...admin,
+      username: 'admin_dpt',
+      passwordHash: await hashPassword(bootstrap),
+      bootstrapFingerprint,
+      updatedAt: new Date().toISOString()
+    };
+    await store.setJSON('main', admin);
+  }
+
+  return admin;
 }
 
 async function getUserById(id) {
@@ -821,22 +845,27 @@ async function handleEvent(event) {
       const admin = await stores.admins().get('main', { type: 'json', consistency: 'strong' });
       return json(200, {
         setupRequired: !admin,
-        bootstrapConfigured: String(process.env.ADMIN_BOOTSTRAP_PASSWORD || '').length >= 12
+        bootstrapConfigured: configuredAdminBootstrapPasswords().length > 0,
+        authMode: 'legacy-bootstrap-sync-v1'
       });
     }
 
     if (method === 'POST' && route === '/admin/recover') {
       const body = parseBody(event);
-      const bootstrap = String(process.env.ADMIN_BOOTSTRAP_PASSWORD || '');
-      if (!bootstrap || !timingSafeTextEqual(body.bootstrapPassword, bootstrap)) {
+      const bootstraps = configuredAdminBootstrapPasswords();
+      if (!bootstraps.some(value => timingSafeTextEqual(body.bootstrapPassword, value))) {
         return json(403, { error: 'Kode pemulihan admin tidak cocok.' });
       }
       const newPassword = String(body.newPassword || '');
       if (newPassword.length < 12) return json(400, { error: 'Password baru minimal 12 karakter.' });
       const admin = await stores.admins().get('main', { type: 'json', consistency: 'strong' });
+      const bootstrap = configuredAdminBootstrapPasswords()[0] || '';
       const next = {
         username: admin?.username || 'admin_dpt',
         passwordHash: await hashPassword(newPassword),
+        bootstrapFingerprint: bootstrap.length >= 8
+          ? crypto.createHash('sha256').update(bootstrap).digest('hex')
+          : admin?.bootstrapFingerprint || '',
         createdAt: admin?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };

@@ -845,7 +845,8 @@ async function handleEvent(event) {
       const admin = await stores.admins().get('main', { type: 'json', consistency: 'strong' });
       return json(200, {
         setupRequired: !admin,
-        bootstrapConfigured: configuredAdminBootstrapPasswords().length > 0
+        bootstrapConfigured: configuredAdminBootstrapPasswords().length > 0,
+        authMode: 'legacy-bootstrap-sync-v1'
       });
     }
 

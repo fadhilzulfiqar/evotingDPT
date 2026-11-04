@@ -287,12 +287,13 @@ async function archiveAndResetElection() {
     throw new Error('Ada ' + recovery.unresolved.length + ' transaksi suara yang belum selesai. Minta pemilih terkait mengirim ulang sebelum reset.');
   }
 
-  const [ballotList, participationList] = await Promise.all([
+  const [ballotList, participationList, pendingList] = await Promise.all([
     votesStore.list({ prefix: 'v2/ballot/' }),
-    votesStore.list({ prefix: 'v2/participation/' })
+    votesStore.list({ prefix: 'v2/participation/' }),
+    votesStore.list({ prefix: 'v2/pending/' })
   ]);
   const archiveId = 'v2-reset-' + new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14) + '-' + crypto.randomBytes(3).toString('hex');
-  const snapshots = { ballots: [], participation: [] };
+  const snapshots = { ballots: [], participation: [], pending: [] };
 
   const copyGroup = async (items, group, sourcePrefix) => {
     for (const item of items || []) {
@@ -313,20 +314,23 @@ async function archiveAndResetElection() {
 
   await copyGroup(ballotList.blobs, 'ballots', 'v2/ballot/');
   await copyGroup(participationList.blobs, 'participation', 'v2/participation/');
+  await copyGroup(pendingList.blobs, 'pending', 'v2/pending/');
 
-  const [ballotsAfter, participationAfter] = await Promise.all([
+  const [ballotsAfter, participationAfter, pendingAfter] = await Promise.all([
     votesStore.list({ prefix: 'v2/ballot/' }),
-    votesStore.list({ prefix: 'v2/participation/' })
+    votesStore.list({ prefix: 'v2/participation/' }),
+    votesStore.list({ prefix: 'v2/pending/' })
   ]);
   const signature = items => (items || []).map(item => item.key).sort().join('|');
   if (
     signature(ballotsAfter.blobs) !== signature(ballotList.blobs) ||
-    signature(participationAfter.blobs) !== signature(participationList.blobs)
+    signature(participationAfter.blobs) !== signature(participationList.blobs) ||
+    signature(pendingAfter.blobs) !== signature(pendingList.blobs)
   ) {
     throw new Error('Data pemilihan berubah selama backup. Tidak ada data aktif yang dihapus.');
   }
 
-  for (const group of ['ballots', 'participation']) {
+  for (const group of ['ballots', 'participation', 'pending']) {
     for (const item of snapshots[group]) {
       const sourceValue = await votesStore.get(item.key, { type: 'json', consistency: 'strong' });
       const archiveValue = await archiveStore.get(item.archiveKey, { type: 'json', consistency: 'strong' });
@@ -338,7 +342,8 @@ async function archiveAndResetElection() {
 
   const checksumItems = [
     ...snapshots.ballots.map(item => ({ store: 'ballots', key: item.key, value: item.value })),
-    ...snapshots.participation.map(item => ({ store: 'participation', key: item.key, value: item.value }))
+    ...snapshots.participation.map(item => ({ store: 'participation', key: item.key, value: item.value })),
+    ...snapshots.pending.map(item => ({ store: 'pending', key: item.key, value: item.value }))
   ].sort((a, b) => (a.store + '/' + a.key).localeCompare(b.store + '/' + b.key));
   const sha256 = crypto.createHash('sha256').update(JSON.stringify(checksumItems)).digest('hex');
   const manifest = {
@@ -347,6 +352,7 @@ async function archiveAndResetElection() {
     createdAt: new Date().toISOString(),
     ballotRecordsCopied: snapshots.ballots.length,
     participationRecordsCopied: snapshots.participation.length,
+    pendingRecordsCopied: snapshots.pending.length,
     snapshotVerified: true,
     sha256,
     note: 'Arsip surat suara dan partisipasi disimpan terpisah. Arsip tidak menyimpan hubungan antara identitas pemilih dan pilihan.'
@@ -360,6 +366,7 @@ async function archiveAndResetElection() {
 
   for (const item of snapshots.ballots) await votesStore.delete(item.key);
   for (const item of snapshots.participation) await votesStore.delete(item.key);
+  for (const item of snapshots.pending) await votesStore.delete(item.key);
 
   await configStore.setJSON('v2/main', {
     ...latestConfig,
@@ -369,12 +376,14 @@ async function archiveAndResetElection() {
   await writeAudit('election.reset_archived', archiveId, {
     ballotRecordsCopied: snapshots.ballots.length,
     participationRecordsCopied: snapshots.participation.length,
+    pendingRecordsCopied: snapshots.pending.length,
     sha256
   });
   return {
     archiveId,
     ballotRecordsCopied: snapshots.ballots.length,
     participationRecordsCopied: snapshots.participation.length,
+    pendingRecordsCopied: snapshots.pending.length,
     sha256
   };
 }
@@ -541,10 +550,10 @@ async function getAdminStats() {
     pending,
     remaining,
     participation: activeTotal ? Math.round(voted / activeTotal * 1000) / 10 : 0,
-    chairCounts: config.status === 'open' || config.status === 'closing' ? null : chairCounts,
-    viceCounts: config.status === 'open' || config.status === 'closing' ? null : viceCounts,
-    totalBallots: config.status === 'open' || config.status === 'closing' ? null : ballots.length,
-    resultsVisible: config.status !== 'open' && config.status !== 'closing',
+    chairCounts: config.status === 'open' || config.status === 'closing' || pending > 0 ? null : chairCounts,
+    viceCounts: config.status === 'open' || config.status === 'closing' || pending > 0 ? null : viceCounts,
+    totalBallots: config.status === 'open' || config.status === 'closing' || pending > 0 ? null : ballots.length,
+    resultsVisible: config.status !== 'open' && config.status !== 'closing' && pending === 0,
     users: safeUsers,
     config: { ...config, configVersion: Number(config.configVersion || 1) },
     database: 'netlify-blobs',

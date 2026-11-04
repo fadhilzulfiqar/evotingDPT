@@ -12,20 +12,8 @@
   force = true
 
 [[redirects]]
-  from = "/index.html"
-  to = "/v2.html"
-  status = 200
-  force = true
-
-[[redirects]]
   from = "/admin"
   to = "/admin.html"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/admin.html"
-  to = "/admin-v2.html"
   status = 200
   force = true
 

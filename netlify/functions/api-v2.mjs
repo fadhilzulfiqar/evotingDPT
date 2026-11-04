@@ -798,7 +798,7 @@ async function handleEvent(event) {
     if (method === 'GET' && route === '/health') {
       await getV2Config();
       await stores.votes().list({ prefix: 'v2/' });
-      return json(200, { ok: true, storage: 'netlify-blobs', electionVersion: 2, deployContext: DEPLOY_CONTEXT || 'unconfigured', storageNamespace: STORE_NAMESPACE });
+      return json(200, { ok: true, storage: 'netlify-blobs', electionVersion: 2, deployContext: DEPLOY_CONTEXT || 'unconfigured', storageNamespace: STORE_NAMESPACE, resetMode: 'admin-direct-no-archive' });
     }
 
     if (method === 'GET' && route === '/election') {

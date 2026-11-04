@@ -63,7 +63,7 @@
     if (!config) return;
     $('#chairGrid').innerHTML = config.candidates.ketua.map(candidate => candidateCard(candidate, 'ketua', selectedChair)).join('');
     $('#viceGrid').innerHTML = config.candidates.wakil.map(candidate => candidateCard(candidate, 'wakil', selectedVice)).join('');
-    $('#reviewButton').disabled = !selectedChair || !selectedVice || sending;
+    $('#reviewButton').disabled = sending;
   }
 
   function findCandidate(role, id) {
@@ -153,11 +153,21 @@
     if (sending || !config || config.status !== 'open') return;
     if (role === 'ketua') selectedChair = id;
     if (role === 'wakil') selectedVice = id;
+    feedback('#voterFeedback', '');
     renderCandidates();
   }
 
   function reviewSelection() {
-    if (!selectedChair || !selectedVice) return;
+    if (!selectedChair || !selectedVice) {
+      const missing = [];
+      if (!selectedChair) missing.push('calon Ketua');
+      if (!selectedVice) missing.push('calon Wakil Ketua');
+      feedback('#voterFeedback', 'Belum dapat melanjutkan. Silakan pilih tepat satu ' + missing.join(' dan ') + ' terlebih dahulu.');
+      const target = !selectedChair ? $('#chairGrid') : $('#viceGrid');
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    feedback('#voterFeedback', '');
     const chair = findCandidate('ketua', selectedChair);
     const vice = findCandidate('wakil', selectedVice);
     if (!chair || !vice) return;

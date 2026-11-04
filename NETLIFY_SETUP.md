@@ -34,7 +34,7 @@ Admin dapat menambahkan akun satu per satu atau impor massal dengan format:
 
 ## 5. Model surat suara
 
-Setiap pemilih mengirim satu pilihan Ketua dan satu pilihan Wakil dalam satu request. Backend memvalidasi kedua calon, membuat klaim partisipasi per akun menggunakan conditional create, lalu menyimpan ballot tanpa ID pemilih. Token pemrosesan sementara dihapus setelah partisipasi berstatus selesai.
+Setiap pemilih mengirim satu pilihan Ketua dan satu pilihan Wakil dalam satu request. Backend memvalidasi kedua calon, membuat klaim partisipasi per akun menggunakan conditional create, lalu menyimpan ballot dengan ID acak. Setelah suara selesai, token pemrosesan sementara dihapus dan status partisipasi menyimpan referensi ballot acak agar admin dapat mencabut surat suara ketika akun dihapus. Dashboard tidak menampilkan pilihan per identitas, tetapi referensi ini menciptakan keterkaitan teknis sehingga sistem tidak lagi sepenuhnya anonim.
 
 ## 6. Sebelum pemilihan resmi
 

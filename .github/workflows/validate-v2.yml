@@ -3,10 +3,10 @@ name: Validate E-Voting DPT v2
 on:
   push:
     branches:
-      - feature/independent-voting-v2
+      - netlify-redesign
   pull_request:
     branches:
-      - main
+      - netlify-redesign
 
 jobs:
   syntax:
@@ -21,6 +21,7 @@ jobs:
       - name: Check JavaScript syntax
         run: |
           node --check netlify/functions/api-v2.mjs
+          node --check netlify/functions/api.mjs
           node --check public/v2.js
           node --check public/admin-v2.js
           node --check scripts/load-test-v2.mjs

@@ -40,7 +40,7 @@
     html += statCard('PARTISIPASI', stats.participation + '%', 'Persentase pemilih aktif');
     html += statCard('STATUS', statusLabel(stats.config.status), 'Status pemungutan suara');
     html += '</div><section class="admin-panel"><div class="eyebrow">KONDISI SISTEM</div><h2>Ringkasan teknis</h2>';
-    html += '<p>Penyimpanan akun, partisipasi, dan surat suara: <b>Netlify Blobs</b><br>Skema: <b>Ketua dan Wakil dipilih terpisah</b><br>Kerahasiaan: <b>identitas dan pilihan disimpan terpisah</b></p>';
+    html += '<p>Penyimpanan akun, partisipasi, dan surat suara: <b>Netlify Blobs</b><br>Skema: <b>Ketua dan Wakil dipilih terpisah</b><br>Kerahasiaan: <b>pilihan tidak ditampilkan per nama; ID referensi acak dipakai untuk pencabutan suara</b></p>';
     if (stats.pending) html += '<div class="notice-error">Ada transaksi suara yang sedang diproses. Selesaikan sebelum menutup pemilihan. Setelah status DITUTUP, Reset hasil akan menghapus transaksi tertunda bersama seluruh hasil aktif.</div>';
     html += '<div class="admin-actions"><button class="small-button gold" type="button" onclick="window.EvotingAdmin.openTab(\'candidates\')">Kelola data calon</button><button class="small-button" type="button" onclick="window.EvotingAdmin.openTab(\'voters\')">Kelola pemilih</button><button class="small-button" type="button" onclick="window.EvotingAdmin.openTab(\'results\')">Lihat rekap suara</button></div></section>';
     $('#adminContent').innerHTML = html;
@@ -148,7 +148,7 @@
       html += '<div class="admin-content-grid">' + statCard('TOTAL SURAT SUARA', stats.totalBallots, 'Satu surat suara berisi pilihan dua jabatan') + statCard('SUDAH MEMILIH', stats.voted, 'Akun pemilih aktif') + statCard('BELUM MEMILIH', stats.remaining, 'Akun pemilih aktif') + '</div>';
       html += renderResultGroup('ketua', stats.config.candidates.ketua, stats.chairCounts);
       html += renderResultGroup('wakil', stats.config.candidates.wakil, stats.viceCounts);
-      html += '<section class="admin-panel"><div class="admin-actions"><button class="small-button gold" type="button" onclick="window.EvotingAdmin.exportCsv()">Unduh rekap CSV</button></div><p class="inline-note">File berisi rekap agregat dan daftar partisipasi, tanpa menghubungkan identitas dengan pilihan.</p></section>';
+      html += '<section class="admin-panel"><div class="admin-actions"><button class="small-button gold" type="button" onclick="window.EvotingAdmin.exportCsv()">Unduh rekap CSV</button></div><p class="inline-note">File berisi rekap agregat dan daftar partisipasi tanpa menampilkan pilihan per identitas.</p></section>';
     }
     $('#adminContent').innerHTML = html;
   }
